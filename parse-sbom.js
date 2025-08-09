@@ -73,26 +73,45 @@ let html = `<!DOCTYPE html>
   <title>Multi-SBOM Report</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>summary::-webkit-details-marker{display:none;}</style>
+  <style>
+    :root{
+      --bg: hsl(0 0% 13%);
+      --fg: hsl(0 0% 87%);
+      --accent: hsl(120 100% 50%);
+      --card: hsl(0 0% 10%);
+      --border: hsl(0 0% 25%);
+      --input: hsl(0 0% 20%);
+      --destructive: hsl(0 70% 50%);
+    }
+    html, body { background-color: var(--bg); color: var(--fg); }
+    a { color: var(--accent); }
+    .accent { color: var(--accent); }
+    .btn-primary { background: var(--accent); color: black; }
+    .btn-danger { background: var(--destructive); color: white; }
+    table, th, td { border-color: var(--border); }
+    input, select, textarea { background: var(--card); color: var(--fg); border-color: var(--input); }
+    ::selection { background: var(--accent); color: black; }
+  </style>
 </head>
-<body class="bg-gray-50 text-gray-800">
+<body class="antialiased">
   <div class="max-w-6xl mx-auto p-6 space-y-8">
-      <section class="bg-white shadow rounded-lg p-6 mb-8">
+      <section class="bg-[var(--card)] shadow rounded-lg p-6 mb-8">
         <h2 class="text-2xl font-semibold mb-4">📊 Summary Dashboard</h2>
-        <div class="grid grid-cols-2 gap-4 text-center">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-center">
           <div>
-            <div class="text-sm text-gray-600">SBOMs Processed</div>
+            <div class="text-sm text-[hsl(0_0%_70%)]">SBOMs Processed</div>
             <div class="text-xl font-bold">${zipFiles.length}</div>
           </div>
           <div>
-            <div class="text-sm text-gray-600">Total Components</div>
+            <div class="text-sm text-[hsl(0_0%_70%)]">Total Components</div>
             <div class="text-xl font-bold">${totalComponents}</div>
           </div>
           <div>
-            <div class="text-sm text-gray-600">Total Vulnerabilities</div>
+            <div class="text-sm text-[hsl(0_0%_70%)]">Total Vulnerabilities</div>
             <div class="text-xl font-bold">${totalVulns}</div>
           </div>
           <div>
-            <div class="text-sm text-gray-600">Severity Breakdown</div>
+            <div class="text-sm text-[hsl(0_0%_70%)]">Severity Breakdown</div>
             <div class="flex justify-center space-x-2">
               <span class="px-2 py-1 rounded-full bg-red-100 text-red-800">Critical: ${severityCounts.CRITICAL}</span>
               <span class="px-2 py-1 rounded-full bg-orange-100 text-orange-800">High: ${severityCounts.HIGH}</span>
@@ -129,7 +148,7 @@ zipFiles.forEach(zipFile => {
   // Start this SBOM’s section
   html += `
     <section>
-      <details open class="bg-white shadow rounded-lg">
+      <details open class="bg-[var(--card)] shadow rounded-lg">
         <summary class="px-6 py-4 flex justify-between items-center cursor-pointer">
           <span class="text-2xl font-semibold">📦 ${title}</span>
           <svg class="w-5 h-5 transform transition-transform" data-open-icon
@@ -140,7 +159,7 @@ zipFiles.forEach(zipFile => {
         </summary>
         <div class="px-6 pb-6 space-y-6">
 
-            <details open class="bg-gray-50 rounded-lg border my-6">
+            <details open class="bg-[var(--bg)] rounded-lg border my-6">
               <summary class="px-6 py-3 font-medium cursor-pointer flex justify-between items-center">
                 <span>Components</span>
                 <svg class="w-5 h-5 transform transition-transform" data-open-icon
@@ -157,14 +176,14 @@ zipFiles.forEach(zipFile => {
                    placeholder="Filter components…"
                    class="mb-4 w-full px-3 py-2 border rounded" />
             <div class="overflow-x-auto">
-              <table id="comps-${title}" class="min-w-full bg-white">
-                <thead class="bg-gray-200">
+              <table id="comps-${title}" class="min-w-full bg-[var(--card)]">
+                <thead class="bg-[hsl(0_0%_20%)]">
                   <tr>
                     <th class="px-4 py-2 text-left">Name</th>
                     <th class="px-4 py-2 text-left">Version</th>
-                    <th class="px-4 py-2 text-left">Group</th>
-                    <th class="px-4 py-2 text-left">PURL</th>
-                    <th class="px-4 py-2 text-left">Licenses</th>
+                    <th class="px-4 py-2 text-left hidden md:table-cell">Group</th>
+                    <th class="px-4 py-2 text-left break-words hidden lg:table-cell">PURL</th>
+                    <th class="px-4 py-2 text-left hidden md:table-cell">Licenses</th>
                   </tr>
                 </thead>
                 <tbody>\n`;
@@ -177,12 +196,12 @@ zipFiles.forEach(zipFile => {
     const lic      = Array.isArray(c.licenses)
       ? c.licenses.map(l => l.license?.name||'').join(', ')
       : '—';
-    html += `                  <tr class="border-b hover:bg-gray-50">
+    html += `                  <tr class="border-b hover:bg-[hsl(0_0%_12%)]">
                     <td class="px-4 py-2">${nm}</td>
                     <td class="px-4 py-2">${ver}</td>
-                    <td class="px-4 py-2">${grp}</td>
-                    <td class="px-4 py-2 break-words">${purl}</td>
-                    <td class="px-4 py-2">${lic}</td>
+                    <td class="px-4 py-2 hidden md:table-cell">${grp}</td>
+                    <td class="px-4 py-2 break-words hidden lg:table-cell">${purl}</td>
+                    <td class="px-4 py-2 hidden md:table-cell">${lic}</td>
                   </tr>\n`;
   });
 
@@ -193,7 +212,7 @@ zipFiles.forEach(zipFile => {
               </div>
             </details>
 
-            <details open class="bg-gray-50 rounded-lg border my-6">
+            <details open class="bg-[var(--bg)] rounded-lg border my-6">
               <summary class="px-6 py-3 font-medium cursor-pointer flex justify-between items-center">
                 <span>Vulnerabilities</span>
                 <svg class="w-5 h-5 transform transition-transform" data-open-icon
@@ -210,13 +229,13 @@ zipFiles.forEach(zipFile => {
                    placeholder="Filter vulnerabilities…"
                    class="mb-4 w-full px-3 py-2 border rounded" />
             <div class="overflow-x-auto">
-              <table id="vulns-${title}" class="min-w-full bg-white">
-                <thead class="bg-gray-200">
+              <table id="vulns-${title}" class="min-w-full bg-[var(--card)]">
+                <thead class="bg-[hsl(0_0%_20%)]">
                   <tr>
                     <th class="px-4 py-2 text-left">ID</th>
                     <th class="px-4 py-2 text-left">Severity</th>
-                    <th class="px-4 py-2 text-left">Description</th>
-                    <th class="px-4 py-2 text-left">Component Ref</th>
+                    <th class="px-4 py-2 text-left hidden lg:table-cell">Description</th>
+                    <th class="px-4 py-2 text-left hidden md:table-cell">Component Ref</th>
                   </tr>
                 </thead>
                 <tbody>\n`;
@@ -227,11 +246,11 @@ zipFiles.forEach(zipFile => {
     const badge = `<span class="px-2 py-1 rounded-full ${badgeClasses[sev]||'bg-gray-100 text-gray-800'}">${sev}</span>`;
     const txt  = (v.description||'').replace(/\r?\n/g,' ');
     const cref = v.component||v.componentRef||'—';
-    html += `                  <tr class="border-b hover:bg-gray-50">
+    html += `                  <tr class="border-b hover:bg-[hsl(0_0%_12%)]">
                     <td class="px-4 py-2">${vid}</td>
                     <td class="px-4 py-2">${badge}</td>
-                    <td class="px-4 py-2">${txt}</td>
-                    <td class="px-4 py-2">${cref}</td>
+                    <td class="px-4 py-2 hidden lg:table-cell">${txt}</td>
+                    <td class="px-4 py-2 hidden md:table-cell">${cref}</td>
                   </tr>\n`;
   });
 
@@ -302,6 +321,18 @@ html += `  </div>
         th.classList.add(asc ? 'asc' : 'desc');
       });
     });
+
+    // Responsive behavior: collapse bulky sections on small screens
+    function applyResponsive() {
+      const isSmall = window.matchMedia('(max-width: 640px)').matches; // Tailwind 'sm'
+      document.body.dataset.viewport = isSmall ? 'mobile' : 'desktop';
+      if (isSmall) {
+        // Close top-level SBOM <details> for faster scanning
+        document.querySelectorAll('section > details').forEach(d => (d.open = false));
+      }
+    }
+    window.addEventListener('resize', applyResponsive);
+    window.addEventListener('DOMContentLoaded', applyResponsive);
   </script>
 </body>
 </html>`;
