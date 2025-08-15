@@ -1,342 +1,276 @@
-// parse-sbom.js
-// Usage: npm install adm-zip && node parse-sbom.js
+#!/usr/bin/env node
+/**
+ * Build a fast index JSON from CycloneDX files found in sboms/**/.
+ * Outputs:
+ *   - public/sbom-index.json   (snapshot, metrics, deltas)
+ *   - public/history.json      (rolling history for sparklines)
+ *   - public/tracker.json      (per-vuln lifecycle for TTF & open age)
+ */
+import fs from "fs";
+import path from "path";
+import glob from "glob";
+import { fileURLToPath } from "url";
 
-const fs     = require('fs');
-const path   = require('path');
-const AdmZip = require('adm-zip');
-const badgeClasses = {
-  CRITICAL: 'bg-red-100 text-red-800',
-  HIGH:     'bg-orange-100 text-orange-800',
-  MEDIUM:   'bg-yellow-100 text-yellow-800',
-  LOW:      'bg-green-100 text-green-800',
-  UNKNOWN:  'bg-gray-100 text-gray-800'
-};
-// Helper: determine severity from vulnerability object
-function extractSeverity(v) {
-  // Use top-level severity if present
-  if (v.severity) {
-    return v.severity.toUpperCase();
-  }
-  // Fallback to CycloneDX ratings array
-  if (Array.isArray(v.ratings) && v.ratings.length) {
-    return v.ratings
-      .map(r => r.severity.toUpperCase())
-      .sort((a, b) =>
-        ['LOW','MEDIUM','HIGH','CRITICAL'].indexOf(b) -
-        ['LOW','MEDIUM','HIGH','CRITICAL'].indexOf(a)
-      )[0];
-  }
-  // Default
-  return 'UNKNOWN';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const SBOMS_DIR = path.join(__dirname, "sboms");
+const OUT_DIR   = path.join(__dirname, "public");
+const SNAP_FILE = path.join(OUT_DIR, "sbom-index.json");
+const HIST_FILE = path.join(OUT_DIR, "history.json");
+const TRK_FILE  = path.join(OUT_DIR, "tracker.json");
+
+function readJSON(p) { try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return null; } }
+function writeJSON(p, obj) { fs.writeFileSync(p, JSON.stringify(obj, null, 2)); }
+
+function severityOrder(s) {
+  const map = { critical:4, high:3, medium:2, low:1, info:0, none:0, unknown:0 };
+  return map[String(s||"").toLowerCase()] ?? 0;
 }
-let totalComponents = 0;
-let totalVulns = 0;
-let severityCounts = { CRITICAL:0, HIGH:0, MEDIUM:0, LOW:0 };
-
-const SBOM_DIR = path.join(__dirname, 'sboms');
-const zipFiles = fs.existsSync(SBOM_DIR)
-  ? fs.readdirSync(SBOM_DIR).filter(f => f.endsWith('.zip'))
-  : [];
-
-if (!zipFiles.length) {
-  console.error(`❌ No .zip files found in ${SBOM_DIR}`);
-  process.exit(1);
+function pickCVSS(scores = []) {
+  let best = null;
+  for (const r of scores) {
+    const score = r.score ?? r.baseScore;
+    const severity = r.severity || r.baseSeverity;
+    if (score == null && !severity) continue;
+    const obj = { score: score ?? null, severity: (severity||"").toUpperCase(), method: r.method || r.source || null };
+    if (!best || (obj.score ?? 0) > (best.score ?? 0)) best = obj;
+  }
+  return best;
+}
+function licenseNames(licenses) {
+  if (!Array.isArray(licenses)) return [];
+  const out = [];
+  for (const l of licenses) {
+    if (l.license?.id) out.push(l.license.id);
+    else if (l.license?.name) out.push(l.license.name);
+    else if (l.expression) out.push(l.expression);
+  }
+  return out;
+}
+function countSeverities(items) {
+  const init = { CRITICAL:0, HIGH:0, MEDIUM:0, LOW:0, INFO:0, UNKNOWN:0 };
+  return items.reduce((acc, it) => {
+    const s = (it.severity || "UNKNOWN").toUpperCase();
+    acc[s] = (acc[s] || 0) + 1;
+    return acc;
+  }, init);
+}
+function median(arr) {
+  const a = arr.filter(x => Number.isFinite(x)).sort((x,y)=>x-y);
+  if (!a.length) return null;
+  const m = Math.floor(a.length/2);
+  return a.length % 2 ? a[m] : (a[m-1]+a[m])/2;
+}
+function daysBetween(aISO, bISO) {
+  const a = new Date(aISO).getTime(), b = new Date(bISO).getTime();
+  return Math.max(0, Math.round((b - a) / (1000*60*60*24)));
 }
 
-// --- Pre-calc totals before rendering ---
-zipFiles.forEach(zipFile => {
-  const zipPath = path.join(SBOM_DIR, zipFile);
-  const zip     = new AdmZip(zipPath);
-  const entry   = zip.getEntries().find(e => e.entryName.toLowerCase().endsWith('.cyclonedx.json'));
-  let sbom = { components: [], vulnerabilities: [] };
-  if (entry) {
-    try {
-      sbom = JSON.parse(entry.getData().toString('utf8'));
-    } catch {}
-  }
-  totalComponents += sbom.components.length;
-  totalVulns += sbom.vulnerabilities.length;
-  sbom.vulnerabilities.forEach(v => {
-    const sev = extractSeverity(v);
-    if (severityCounts.hasOwnProperty(sev)) {
-      severityCounts[sev]++;
-    }
+function indexCycloneDX(json, datasetId) {
+  const componentMap = new Map();
+  (json.components || []).forEach(c => {
+    const key = c["bom-ref"] || c["bomRef"] || c.purl || `${c.name || "component"}@${c.version || ""}`;
+    componentMap.set(key, c);
   });
-});
 
-// --- HTML boilerplate start ---
-let html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Multi-SBOM Report</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>summary::-webkit-details-marker{display:none;}</style>
-  <style>
-    :root{
-      --bg: hsl(0 0% 13%);
-      --fg: hsl(0 0% 87%);
-      --accent: hsl(120 100% 50%);
-      --card: hsl(0 0% 10%);
-      --border: hsl(0 0% 25%);
-      --input: hsl(0 0% 20%);
-      --destructive: hsl(0 70% 50%);
+  const vuls = [];
+  for (const v of json.vulnerabilities || []) {
+    const affects = (v.affects || []).map(a => a.ref).filter(Boolean);
+    const rating = pickCVSS(v.ratings || v.cvss || []);
+    const sev = (v.severity || rating?.severity || "UNKNOWN").toUpperCase();
+
+    const targets = affects.length ? affects : [null];
+    for (const ref of targets) {
+      const c = ref ? (componentMap.get(ref) || {}) : {};
+      const lic = licenseNames(c.licenses);
+      vuls.push({
+        dataset: datasetId,
+        id: v.id || null,
+        title: v.description?.slice(0, 200) || "Vulnerability",
+        severity: sev,
+        severityRank: severityOrder(sev),
+        cvss: rating?.score ?? null,
+        component: c.name || null,
+        version: c.version || null,
+        purl: c.purl || null,
+        licenses: lic,
+        direct: (c.scope || "").toLowerCase() !== "optional" && (c.scope || "").toLowerCase() !== "transitive",
+        cwes: (v.cwes || []).map(x => x.id || x).filter(Boolean),
+        urls: (v.references || []).map(r => r.url).filter(Boolean),
+        fixedVersions: (v.analysis?.response || []).includes("update") ? ["*"] : []
+      });
     }
-    html, body { background-color: var(--bg); color: var(--fg); }
-    a { color: var(--accent); }
-    .accent { color: var(--accent); }
-    .btn-primary { background: var(--accent); color: black; }
-    .btn-danger { background: var(--destructive); color: white; }
-    table, th, td { border-color: var(--border); }
-    input, select, textarea { background: var(--card); color: var(--fg); border-color: var(--input); }
-    ::selection { background: var(--accent); color: black; }
-  </style>
-</head>
-<body class="antialiased">
-  <div class="max-w-6xl mx-auto p-6 space-y-8">
-      <section class="bg-[var(--card)] shadow rounded-lg p-6 mb-8">
-        <h2 class="text-2xl font-semibold mb-4">📊 Summary Dashboard</h2>
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-center">
-          <div>
-            <div class="text-sm text-[hsl(0_0%_70%)]">SBOMs Processed</div>
-            <div class="text-xl font-bold">${zipFiles.length}</div>
-          </div>
-          <div>
-            <div class="text-sm text-[hsl(0_0%_70%)]">Total Components</div>
-            <div class="text-xl font-bold">${totalComponents}</div>
-          </div>
-          <div>
-            <div class="text-sm text-[hsl(0_0%_70%)]">Total Vulnerabilities</div>
-            <div class="text-xl font-bold">${totalVulns}</div>
-          </div>
-          <div>
-            <div class="text-sm text-[hsl(0_0%_70%)]">Severity Breakdown</div>
-            <div class="flex justify-center space-x-2">
-              <span class="px-2 py-1 rounded-full bg-red-100 text-red-800">Critical: ${severityCounts.CRITICAL}</span>
-              <span class="px-2 py-1 rounded-full bg-orange-100 text-orange-800">High: ${severityCounts.HIGH}</span>
-              <span class="px-2 py-1 rounded-full bg-yellow-100 text-yellow-800">Medium: ${severityCounts.MEDIUM}</span>
-              <span class="px-2 py-1 rounded-full bg-green-100 text-green-800">Low: ${severityCounts.LOW}</span>
-            </div>
-          </div>
-        </div>
-        <div class="mt-6">
-          <input type="text" id="global-filter" placeholder="Global search across all SBOMs..." class="w-full px-3 py-2 border rounded" />
-        </div>
-      </section>
-`;
-
-// --- Generate one section per archive ---
-zipFiles.forEach(zipFile => {
-  const title   = path.basename(zipFile, '.zip');
-  const zipPath = path.join(SBOM_DIR, zipFile);
-  const zip     = new AdmZip(zipPath);
-  const entry   = zip.getEntries().find(e => e.entryName.toLowerCase().endsWith('.cyclonedx.json'));
-
-  let sbom = { components: [], vulnerabilities: [] };
-  if (entry) {
-    try {
-      sbom = JSON.parse(entry.getData().toString('utf8'));
-    } catch (e) {
-      console.warn(`⚠️  Could not parse JSON in ${zipFile}:`, e.message);
-    }
-  } else {
-    console.warn(`⚠️  No .json found inside ${zipFile}`);
   }
 
+  return {
+    dataset: datasetId,
+    created: json.metadata?.timestamp || null,
+    components: (json.components || []).length,
+    vulnerabilities: vuls.length,
+    items: vuls
+  };
+}
 
-  // Start this SBOM’s section
-  html += `
-    <section>
-      <details open class="bg-[var(--card)] shadow rounded-lg">
-        <summary class="px-6 py-4 flex justify-between items-center cursor-pointer">
-          <span class="text-2xl font-semibold">📦 ${title}</span>
-          <svg class="w-5 h-5 transform transition-transform" data-open-icon
-               xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M19 9l-7 7-7-7" />
-          </svg>
-        </summary>
-        <div class="px-6 pb-6 space-y-6">
+function makeKey(it) {
+  // Stable key per vuln occurrence
+  return `${it.dataset}::${it.id || (it.component || "comp")+"@"+(it.version||"")}`;
+}
 
-            <details open class="bg-[var(--bg)] rounded-lg border my-6">
-              <summary class="px-6 py-3 font-medium cursor-pointer flex justify-between items-center">
-                <span>Components</span>
-                <svg class="w-5 h-5 transform transition-transform" data-open-icon
-                     xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M19 9l-7 7-7-7" />
-                </svg>
-              </summary>
-              <div class="px-6 pb-6 space-y-4">
+function buildTopCVEs(items) {
+  const map = new Map();
+  for (const it of items) {
+    const id = it.id || "";
+    if (!/^CVE-\d{4}-\d{4,}$/.test(id)) continue;
+    const cur = map.get(id) || { id, count:0, datasets:new Set(), maxCVSS:null, worstSeverityRank:-1 };
+    cur.count += 1;
+    cur.datasets.add(it.dataset);
+    if (it.cvss != null) cur.maxCVSS = Math.max(cur.maxCVSS ?? -Infinity, it.cvss);
+    if ((it.severityRank ?? -1) > cur.worstSeverityRank) cur.worstSeverityRank = it.severityRank ?? -1;
+    map.set(id, cur);
+  }
+  return [...map.values()]
+    .map(x => ({ id:x.id, count:x.count, datasets:[...x.datasets].sort(), maxCVSS: x.maxCVSS, worstSeverityRank:x.worstSeverityRank }))
+    .sort((a,b)=> (b.worstSeverityRank - a.worstSeverityRank) || (b.count - a.count) || (b.maxCVSS??0)-(a.maxCVSS??0))
+    .slice(10); // top 10
+}
 
-          <!-- Components -->
-          <div>
-            <input type="text" id="filter-${title}-comps"
-                   placeholder="Filter components…"
-                   class="mb-4 w-full px-3 py-2 border rounded" />
-            <div class="overflow-x-auto">
-              <table id="comps-${title}" class="min-w-full bg-[var(--card)]">
-                <thead class="bg-[hsl(0_0%_20%)]">
-                  <tr>
-                    <th class="px-4 py-2 text-left">Name</th>
-                    <th class="px-4 py-2 text-left">Version</th>
-                    <th class="px-4 py-2 text-left hidden md:table-cell">Group</th>
-                    <th class="px-4 py-2 text-left break-words hidden lg:table-cell">PURL</th>
-                    <th class="px-4 py-2 text-left hidden md:table-cell">Licenses</th>
-                  </tr>
-                </thead>
-                <tbody>\n`;
+function main() {
+  if (!fs.existsSync(OUT_DIR)) fs.mkdirSync(OUT_DIR, { recursive: true });
+  const now = new Date().toISOString();
 
-  sbom.components.forEach(c => {
-    const nm       = c.name    || '—';
-    const ver      = c.version || '—';
-    const grp      = c.group   || '—';
-    const purl     = c.purl    || '—';
-    const lic      = Array.isArray(c.licenses)
-      ? c.licenses.map(l => l.license?.name||'').join(', ')
-      : '—';
-    html += `                  <tr class="border-b hover:bg-[hsl(0_0%_12%)]">
-                    <td class="px-4 py-2">${nm}</td>
-                    <td class="px-4 py-2">${ver}</td>
-                    <td class="px-4 py-2 hidden md:table-cell">${grp}</td>
-                    <td class="px-4 py-2 break-words hidden lg:table-cell">${purl}</td>
-                    <td class="px-4 py-2 hidden md:table-cell">${lic}</td>
-                  </tr>\n`;
-  });
+  // 1) Parse SBOMs
+  const files = glob.sync("**/*.cyclonedx.json", { cwd: SBOMS_DIR, absolute: true, nodir: true });
+  const datasets = [];
+  for (const f of files) {
+    const json = readJSON(f);
+    if (!json) continue;
+    const rel = path.relative(SBOMS_DIR, f).replace(/\\/g, "/");
+    const datasetId = rel.split("/")[0];
+    datasets.push(indexCycloneDX(json, datasetId));
+  }
+  const items = datasets.flatMap(d => d.items);
 
-  html += `                </tbody>
-              </table>
-            </div>
-          </div>
-              </div>
-            </details>
-
-            <details open class="bg-[var(--bg)] rounded-lg border my-6">
-              <summary class="px-6 py-3 font-medium cursor-pointer flex justify-between items-center">
-                <span>Vulnerabilities</span>
-                <svg class="w-5 h-5 transform transition-transform" data-open-icon
-                     xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M19 9l-7 7-7-7" />
-                </svg>
-              </summary>
-              <div class="px-6 pb-6 space-y-4">
-
-          <!-- Vulnerabilities -->
-          <div>
-            <input type="text" id="filter-${title}-vulns"
-                   placeholder="Filter vulnerabilities…"
-                   class="mb-4 w-full px-3 py-2 border rounded" />
-            <div class="overflow-x-auto">
-              <table id="vulns-${title}" class="min-w-full bg-[var(--card)]">
-                <thead class="bg-[hsl(0_0%_20%)]">
-                  <tr>
-                    <th class="px-4 py-2 text-left">ID</th>
-                    <th class="px-4 py-2 text-left">Severity</th>
-                    <th class="px-4 py-2 text-left hidden lg:table-cell">Description</th>
-                    <th class="px-4 py-2 text-left hidden md:table-cell">Component Ref</th>
-                  </tr>
-                </thead>
-                <tbody>\n`;
-
-  sbom.vulnerabilities.forEach(v => {
-    const vid  = v.id || '—';
-    const sev = extractSeverity(v);
-    const badge = `<span class="px-2 py-1 rounded-full ${badgeClasses[sev]||'bg-gray-100 text-gray-800'}">${sev}</span>`;
-    const txt  = (v.description||'').replace(/\r?\n/g,' ');
-    const cref = v.component||v.componentRef||'—';
-    html += `                  <tr class="border-b hover:bg-[hsl(0_0%_12%)]">
-                    <td class="px-4 py-2">${vid}</td>
-                    <td class="px-4 py-2">${badge}</td>
-                    <td class="px-4 py-2 hidden lg:table-cell">${txt}</td>
-                    <td class="px-4 py-2 hidden md:table-cell">${cref}</td>
-                  </tr>\n`;
-  });
-
-  html += `                </tbody>
-              </table>
-            </div>
-          </div>
-              </div>
-            </details>
-
-        </div>
-      </details>
-    </section>\n`;
-});
-
-// --- Close out HTML + scripts for toggles & filters ---
-html += `  </div>
-  <script>
-    // Arrow rotation
-    document.querySelectorAll('details').forEach(d => {
-      const icon = d.querySelector('[data-open-icon]');
-      d.addEventListener('toggle', () => icon.classList.toggle('rotate-180', d.open));
-    });
-
-    // Per-section filters
-    ${zipFiles.map(z => {
-      const t = path.basename(z,'.zip');
-      return `
-    document.getElementById('filter-${t}-comps')
-      .addEventListener('input', e => {
-        const f=e.target.value.toLowerCase();
-        document.querySelectorAll('#comps-${t} tbody tr')
-          .forEach(r=> r.style.display = r.textContent.toLowerCase().includes(f) ? '' : 'none');
-      });
-    document.getElementById('filter-${t}-vulns')
-      .addEventListener('input', e => {
-        const f=e.target.value.toLowerCase();
-        document.querySelectorAll('#vulns-${t} tbody tr')
-          .forEach(r=> r.style.display = r.textContent.toLowerCase().includes(f) ? '' : 'none');
-      });
-      `;
-    }).join('')}
-
-    // Global filter
-    document.getElementById('global-filter').addEventListener('input', e => {
-      const f = e.target.value.toLowerCase();
-      document.querySelectorAll('table tbody tr').forEach(r => {
-        r.style.display = r.textContent.toLowerCase().includes(f) ? '' : 'none';
-      });
-    });
-
-    // Table sorting
-    document.querySelectorAll('th').forEach(th => {
-      th.classList.add('cursor-pointer');
-      th.addEventListener('click', () => {
-        const table = th.closest('table');
-        const tbody = table.querySelector('tbody');
-        const index = Array.from(th.parentNode.children).indexOf(th);
-        const rows = Array.from(tbody.querySelectorAll('tr'));
-        const asc = !th.classList.contains('asc');
-        rows.sort((a,b) => {
-          const aText = a.children[index].textContent.trim().toLowerCase();
-          const bText = b.children[index].textContent.trim().toLowerCase();
-          return aText.localeCompare(bText) * (asc ? 1 : -1);
-        });
-        rows.forEach(r => tbody.appendChild(r));
-        table.querySelectorAll('th').forEach(h => h.classList.remove('asc','desc'));
-        th.classList.add(asc ? 'asc' : 'desc');
-      });
-    });
-
-    // Responsive behavior: collapse bulky sections on small screens
-    function applyResponsive() {
-      const isSmall = window.matchMedia('(max-width: 640px)').matches; // Tailwind 'sm'
-      document.body.dataset.viewport = isSmall ? 'mobile' : 'desktop';
-      if (isSmall) {
-        // Close top-level SBOM <details> for faster scanning
-        document.querySelectorAll('section > details').forEach(d => (d.open = false));
-      }
+  // 2) Update tracker (firstSeen/lastSeen/closedAt)
+  const tracker = readJSON(TRK_FILE) || { vulns: {} };
+  const currentKeys = new Set();
+  for (const it of items) {
+    const key = makeKey(it);
+    currentKeys.add(key);
+    if (!tracker.vulns[key]) tracker.vulns[key] = { firstSeen: now, lastSeen: now, closedAt: null, meta: { id: it.id, component: it.component, dataset: it.dataset } };
+    tracker.vulns[key].lastSeen = now;
+    tracker.vulns[key].closedAt = null; // still present
+  }
+  // mark closures (anything not seen this run but present before)
+  for (const [key, rec] of Object.entries(tracker.vulns)) {
+    if (!currentKeys.has(key) && rec.closedAt === null) {
+      rec.closedAt = now;
     }
-    window.addEventListener('resize', applyResponsive);
-    window.addEventListener('DOMContentLoaded', applyResponsive);
-  </script>
-</body>
-</html>`;
+  }
+  // prune very old closed entries (keep last 5000 to avoid growth)
+  const entries = Object.entries(tracker.vulns);
+  if (entries.length > 12000) {
+    const closed = entries.filter(([,r]) => r.closedAt).sort((a,b)=> new Date(b[1].closedAt)-new Date(a[1].closedAt));
+    const keepClosed = new Set(closed.slice(0,5000).map(([k])=>k));
+    for (const [k, r] of entries) {
+      if (r.closedAt && !keepClosed.has(k)) delete tracker.vulns[k];
+    }
+  }
+  writeJSON(TRK_FILE, tracker);
 
-// Write the final report
-fs.writeFileSync('index.html', html, 'utf8');
-console.log(`✅ Generated report with ${zipFiles.length} SBOM sections.`);
+  // 3) Metrics (counts, deltas, TTF, ages, top CVEs)
+  const datasetSummaries = datasets.map(d => ({
+    id: d.dataset,
+    created: d.created,
+    components: d.components,
+    vulnerabilities: d.vulnerabilities,
+    severityCounts: countSeverities(d.items)
+  }));
+  const overallSeverity = countSeverities(items);
+
+  const prev = readJSON(SNAP_FILE);
+  const prevMap = new Map();
+  if (prev?.datasets) for (const pd of prev.datasets) prevMap.set(pd.id, pd);
+
+  const datasetsWithDelta = datasetSummaries.map(d => {
+    const p = prevMap.get(d.id);
+    const delta = p ? (d.vulnerabilities - (p.vulnerabilities||0)) : null;
+    const severityDelta = {};
+    if (p?.severityCounts) for (const k of Object.keys(d.severityCounts)) severityDelta[k] = (d.severityCounts[k]||0)-(p.severityCounts[k]||0);
+    else for (const k of Object.keys(d.severityCounts)) severityDelta[k] = null;
+    return { ...d, delta, severityDelta };
+  });
+
+  const overallPrev = prev?.overall || null;
+  const overallDelta = overallPrev ? (items.length - (overallPrev.total||0)) : null;
+  const overallSevDelta = {};
+  if (overallPrev?.severityCounts) for (const k of Object.keys(overallSeverity)) overallSevDelta[k] = (overallSeverity[k]||0)-(overallPrev.severityCounts[k]||0);
+  else for (const k of Object.keys(overallSeverity)) overallSevDelta[k] = null;
+
+  // Fix availability rate (how many vulns indicate any fix)
+  const fixAvailRate = items.length ? Math.round(100 * (items.filter(it => (it.fixedVersions||[]).length>0).length / items.length)) : 0;
+
+  // TTF (median days for closed vulns)
+  const ttfDays = Object.values(tracker.vulns)
+    .filter(r => r.closedAt)
+    .map(r => daysBetween(r.firstSeen, r.closedAt));
+  const ttfMedianDays = median(ttfDays);
+
+  // Open age (median of days since firstSeen for *current* vulns)
+  const nowISO = now;
+  const openAgeDays = Object.entries(tracker.vulns)
+    .filter(([k]) => currentKeys.has(k))
+    .map(([,r]) => daysBetween(r.firstSeen, nowISO));
+  const openAgeMedianDays = median(openAgeDays);
+
+  // Oldest open top 5
+  const oldestOpen = Object.entries(tracker.vulns)
+    .filter(([k]) => currentKeys.has(k))
+    .map(([k,r]) => ({ key:k, days: daysBetween(r.firstSeen, nowISO), meta:r.meta }))
+    .sort((a,b)=> b.days - a.days)
+    .slice(0,5);
+
+  // Attach firstSeen to current items (for UI hover)
+  const itemsWithAge = items.map(it => {
+    const rec = tracker.vulns[makeKey(it)];
+    return { ...it, firstSeen: rec?.firstSeen || null };
+  });
+
+  // Top CVEs
+  const topCVEs = buildTopCVEs(itemsWithAge);
+
+  const snapshot = {
+    generatedAt: now,
+    datasets: datasetsWithDelta,
+    items: itemsWithAge,
+    overall: {
+      total: itemsWithAge.length,
+      severityCounts: overallSeverity,
+      delta: overallDelta,
+      severityDelta: overallSevDelta
+    },
+    metrics: {
+      fixAvailabilityRate: fixAvailRate,
+      ttfMedianDays,
+      openAgeMedianDays,
+      oldestOpen,
+      topCVEs
+    }
+  };
+  writeJSON(SNAP_FILE, snapshot);
+  console.log(`✅ Wrote ${SNAP_FILE} with ${itemsWithAge.length} vulns across ${datasets.length} dataset(s).`);
+
+  // 4) History for sparklines
+  const hist = readJSON(HIST_FILE) || { entries: [] };
+  const perDataset = {};
+  for (const d of datasetSummaries) perDataset[d.id] = d.severityCounts;
+  hist.entries.push({
+    generatedAt: now,
+    overall: { total: snapshot.overall.total, severityCounts: snapshot.overall.severityCounts },
+    datasets: perDataset
+  });
+  if (hist.entries.length > 50) hist.entries = hist.entries.slice(-50);
+  writeJSON(HIST_FILE, hist);
+  console.log(`🕘 Updated ${HIST_FILE} (entries: ${hist.entries.length}).`);
+}
+main();

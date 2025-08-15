@@ -1,0 +1,67 @@
+name: Sync SBOMs & Build UI
+
+on:
+  # Triggered by Nightingale when Trivy completes
+  repository_dispatch:
+    types: [nightingale-trivy-complete]
+
+  # Fallback: run monthly at 10:30 UTC on the 1st
+  # Nightingale runs at 10:00 → we pull 30 min later
+  schedule:
+    - cron: "30 10 1 * *"
+
+  # Manual
+  workflow_dispatch: {}
+
+permissions:
+  actions: read
+  contents: write   # commit generated files
+
+jobs:
+  sync_build:
+    runs-on: ubuntu-latest
+    env:
+      # Use branch from dispatch payload, else fall back to 'Sbom-Parser'
+      TARGET_BRANCH: ${{ github.event.client_payload.target_branch || 'Sbom-Parser' }}
+    steps:
+      - name: Checkout default branch (just to get the repo + full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Switch to target branch (create if missing)
+        run: |
+          git fetch origin
+          if git ls-remote --exit-code --heads origin "$TARGET_BRANCH" >/dev/null 2>&1; then
+            echo "Branch exists on remote: $TARGET_BRANCH"
+            git switch "$TARGET_BRANCH"
+            git pull --ff-only origin "$TARGET_BRANCH"
+          else
+            echo "Creating branch: $TARGET_BRANCH"
+            git switch -c "$TARGET_BRANCH"
+          fi
+          git status
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Sync SBOM artifacts from Nightingale
+        env:
+          GH_TOKEN: ${{ secrets.TOKEN }}
+        run: npm run sync:sboms
+
+      - name: Build static UI
+        run: npm run build:ui
+
+      - name: Commit changes & push changes to target branch
+        run: |
+          git add -A
+          git commit -m "chore: sync SBOMs + rebuild UI (branch: $TARGET_BRANCH)" || { echo "No changes"; exit 0; }
+          # Set upstream if branch was just created
+          git rev-parse --abbrev-ref --symbolic-full-name @{u} >/dev/null 2>&1 || git push --set-upstream origin "$TARGET_BRANCH"
+          git push
