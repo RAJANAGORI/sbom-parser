@@ -65,6 +65,8 @@ jobs:
 
       - name: Commit changes & push changes to target branch
         run: |
+          git config --global user.name "sidbhasin13"
+          git config --global user.email "sidbhasin13@outlook.com"
           git add public/*.json
           git commit -m "chore: sync SBOMs + rebuild UI (branch: $TARGET_BRANCH)" || { echo "No changes"; exit 0; }
           # Set upstream if branch was just created
