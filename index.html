@@ -4,14 +4,20 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>SBOM Explorer</title>
+
+  <!-- Tailwind/Alpine/Chart.js from CDN for GH Pages -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+
+  <meta name="color-scheme" content="light" />
   <style>
     .card{ @apply bg-white border rounded-2xl shadow-sm p-4; }
     .chip{ @apply text-xs px-2 py-0.5 rounded; }
     [x-cloak]{ display:none !important; }
     .muted{ @apply text-xs text-gray-500; }
+    .skeleton{ @apply animate-pulse bg-gray-200 rounded; }
+    a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
   </style>
 </head>
 <body class="h-full">
@@ -19,84 +25,99 @@
   <header class="sticky top-0 z-40 bg-white/90 backdrop-blur border-b">
     <div class="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3">
       <h1 class="text-xl font-semibold">SBOM Explorer</h1>
-      <span class="text-xs text-gray-500" x-text="metaText"></span>
+      <span class="text-xs text-gray-500" x-text="metaText" aria-live="polite"></span>
       <div class="ml-auto flex gap-2">
-        <button class="px-3 py-2 border rounded-xl" @click="exportCSV()">Export CSV</button>
-        <button class="px-3 py-2 border rounded-xl" @click="saveView()">Save View</button>
-        <button class="px-3 py-2 border rounded-xl" @click="loadView()">Load View</button>
+        <button class="px-3 py-2 border rounded-xl" @click="exportCSV()" title="Export visible rows to CSV">Export CSV</button>
+        <button class="px-3 py-2 border rounded-xl" @click="saveView()" title="Save filters locally">Save View</button>
+        <button class="px-3 py-2 border rounded-xl" @click="loadView()" title="Load saved filters">Load View</button>
       </div>
     </div>
+
     <!-- Filters -->
     <div class="max-w-7xl mx-auto px-4 pb-3 flex items-center gap-2 flex-wrap">
-      <input x-model="q" @input="applyFilters(true)" placeholder="Search (component, purl, vuln id, license)"
+      <label class="sr-only" for="q">Search</label>
+      <input id="q" x-model="q" @input="applyFilters(true)" placeholder="Search (component, purl, vuln id, license)"
         class="w-72 px-3 py-2 border rounded-xl focus:outline-none focus:ring" />
-      <select x-model="dataset" @change="applyFilters(true)" class="px-3 py-2 border rounded-xl">
+
+      <label class="sr-only" for="dataset">Dataset</label>
+      <select id="dataset" x-model="dataset" @change="applyFilters(true)" class="px-3 py-2 border rounded-xl">
         <option value="">All datasets</option>
-        <template x-for="d in datasets" :key="d.id">
+        <template x-for="d in datasets" :key="d._key">
           <option :value="d.id" x-text="`${d.id} (${d.vulnerabilities})`"></option>
         </template>
       </select>
-      <select x-model="severity" @change="applyFilters(true)" class="px-3 py-2 border rounded-xl">
+
+      <label class="sr-only" for="severity">Severity</label>
+      <select id="severity" x-model="severity" @change="applyFilters(true)" class="px-3 py-2 border rounded-xl">
         <option value="">All severities</option>
         <template x-for="s in ['CRITICAL','HIGH','MEDIUM','LOW','INFO','UNKNOWN']" :key="s">
           <option :value="s" x-text="s"></option>
         </template>
       </select>
-      <select x-model="fix" @change="applyFilters(true)" class="px-3 py-2 border rounded-xl">
+
+      <label class="sr-only" for="fix">Fix status</label>
+      <select id="fix" x-model="fix" @change="applyFilters(true)" class="px-3 py-2 border rounded-xl">
         <option value="">Fix status</option>
         <option value="has">Has fix</option>
         <option value="none">No fix</option>
       </select>
+
       <label class="flex items-center gap-2 px-3 py-2 border rounded-xl">
         <span class="text-sm">CVSS ≥</span>
         <input type="number" min="0" max="10" step="0.1" x-model.number="cvssMin" @input="applyFilters(true)" class="w-20 outline-none" />
       </label>
+
       <label class="flex items-center gap-2 px-3 py-2 border rounded-xl">
         <input type="checkbox" x-model="onlyDirect" @change="applyFilters(true)">
         <span class="text-sm">Only direct</span>
       </label>
+
       <div class="ml-auto flex items-center gap-2 text-sm">
-        <label>Sort:</label>
-        <select x-model="sortKey" @change="applyFilters()" class="px-2 py-1 border rounded-lg">
+        <label for="sort">Sort:</label>
+        <select id="sort" x-model="sortKey" @change="applyFilters()" class="px-2 py-1 border rounded-lg">
           <option value="severityRank">Severity</option>
           <option value="cvss">CVSS</option>
           <option value="component">Component</option>
           <option value="dataset">Dataset</option>
         </select>
         <button class="px-2 py-1 border rounded-lg" @click="sortDir = sortDir==='desc'?'asc':'desc'; applyFilters()"
+                :aria-label="sortDir==='desc' ? 'Sort descending' : 'Sort ascending'"
                 x-text="sortDir==='desc' ? '↓' : '↑'"></button>
       </div>
     </div>
   </header>
 
   <main class="max-w-7xl mx-auto px-4 py-6">
-    <!-- Findings summary: totals + donut + sparklines + new metrics -->
-    <section class="grid grid-cols-1 lg:grid-cols-12 gap-4 mb-6">
-      <!-- Totals + sparks -->
+    <!-- Summary + Donut -->
+    <section class="grid grid-cols-1 lg:grid-cols-12 gap-4 mb-6" aria-live="polite">
       <div class="lg:col-span-7 grid grid-cols-2 md:grid-cols-4 gap-3">
         <div class="card col-span-2">
           <div class="text-xs text-gray-500">Total Vulnerabilities</div>
-          <div class="text-2xl font-semibold" x-text="overall.total"></div>
+          <div class="text-2xl font-semibold" x-text="overall.total ?? '—'"></div>
           <div class="text-xs mt-1" x-html="deltaBadge(overall.delta)"></div>
           <canvas id="sparkTotal" height="40" class="mt-2"></canvas>
         </div>
-        <template x-for="sev in ['CRITICAL','HIGH','MEDIUM','LOW']" :key="sev">
+        <template x-for="sev in ['CRITICAL','HIGH','MEDIUM','LOW']" :key="'sev-'+sev">
           <div class="card">
             <div class="text-xs text-gray-500" x-text="sev"></div>
-            <div class="text-xl font-semibold" x-text="overall.severityCounts[sev] ?? 0"></div>
-            <div class="text-xs mt-1" x-html="deltaBadge(overall.severityDelta[sev])"></div>
+            <div class="text-xl font-semibold" x-text="overall.severityCounts?.[sev] ?? 0"></div>
+            <div class="text-xs mt-1" x-html="deltaBadge(overall.severityDelta?.[sev])"></div>
             <canvas :id="`spark-${sev}`" height="40" class="mt-2"></canvas>
           </div>
         </template>
       </div>
-      <!-- Donut -->
       <div class="card lg:col-span-5">
         <div class="text-sm font-medium mb-2">Severity distribution</div>
-        <canvas id="donut" height="160"></canvas>
+        <div class="h-[180px] relative">
+          <canvas id="donut" height="160"></canvas>
+          <div x-show="!chartsReady" class="absolute inset-0 p-4">
+            <div class="skeleton h-full w-full"></div>
+          </div>
+        </div>
       </div>
     </section>
 
-    <!-- New metric cards -->
+    <!-- Metric Cards -->
     <section class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
       <div class="card">
         <div class="text-xs text-gray-500">Fix availability rate</div>
@@ -106,7 +127,7 @@
       <div class="card">
         <div class="text-xs text-gray-500">Median time to fix</div>
         <div class="text-2xl font-semibold" x-text="metrics.ttfMedianDays === null ? '–' : (metrics.ttfMedianDays + ' days')"></div>
-        <div class="muted mt-1">Measured across vulns that disappeared since first seen</div>
+        <div class="muted mt-1">Based on vulns that disappeared since first seen</div>
       </div>
       <div class="card">
         <div class="text-xs text-gray-500">Median open age</div>
@@ -119,14 +140,14 @@
     <section class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
       <div class="card">
         <div class="flex items-center justify-between mb-2">
-          <div class="text-sm font-medium">Top CVEs (by severity & count)</div>
+          <div class="text-sm font-medium">Top CVEs</div>
           <button class="text-xs underline" @click="applyTopCVE()">Clear filter</button>
         </div>
         <template x-if="!(metrics.topCVEs||[]).length">
           <div class="muted">No CVE IDs found in current data.</div>
         </template>
         <ul class="text-sm space-y-2 max-h-72 overflow-auto">
-          <template x-for="cve in (metrics.topCVEs || [])" :key="cve.id">
+          <template x-for="cve in (metrics.topCVEs || [])" :key="'cve-'+cve.id">
             <li class="flex items-start justify-between gap-3">
               <div>
                 <button class="text-blue-600 underline font-medium" @click="applyTopCVE(cve.id)" x-text="cve.id"></button>
@@ -148,7 +169,7 @@
           <div class="muted">No data yet.</div>
         </template>
         <ul class="text-sm space-y-2 max-h-72 overflow-auto">
-          <template x-for="v in (metrics.oldestOpen || [])" :key="v.key">
+          <template x-for="v in (metrics.oldestOpen || [])" :key="'old-'+v.key">
             <li>
               <div class="font-medium">
                 <span x-text="v.meta?.id || '—'"></span>
@@ -168,10 +189,10 @@
 
     <!-- Tabs -->
     <div class="mb-3 border-b">
-      <nav class="-mb-px flex gap-2">
-        <button :class="tab==='vulns' ? activeTab : baseTab" @click="tab='vulns'">Vulnerabilities</button>
-        <button :class="tab==='components' ? activeTab : baseTab" @click="tab='components'">Components</button>
-        <button :class="tab==='compare' ? activeTab : baseTab" @click="tab='compare'">Compare datasets</button>
+      <nav class="-mb-px flex gap-2" role="tablist" aria-label="Views">
+        <button :class="tab==='vulns' ? activeTab : baseTab" @click="tab='vulns'; persistToHash()" role="tab" :aria-selected="tab==='vulns'">Vulnerabilities</button>
+        <button :class="tab==='components' ? activeTab : baseTab" @click="tab='components'; persistToHash()" role="tab" :aria-selected="tab==='components'">Components</button>
+        <button :class="tab==='compare' ? activeTab : baseTab" @click="tab='compare'; persistToHash()" role="tab" :aria-selected="tab==='compare'">Compare datasets</button>
       </nav>
     </div>
 
@@ -180,6 +201,7 @@
       <div class="mb-2 text-sm text-gray-600">
         <span x-text="`Showing ${filtered.length} of ${items.length} vulnerabilities`"></span>
       </div>
+
       <div class="overflow-x-auto bg-white border rounded-2xl shadow-sm">
         <table class="min-w-full text-sm">
           <thead class="bg-gray-50">
@@ -195,11 +217,12 @@
             </tr>
           </thead>
           <tbody>
-            <template x-for="row in paged" :key="row.dataset + (row.id || row.component || Math.random())">
+            <!-- Unique key per row to avoid duplicate-key warnings -->
+            <template x-for="row in paged" :key="row._key">
               <tr class="border-t hover:bg-gray-50">
                 <td class="px-4 py-2">
-                  <span class="px-2 py-1 rounded-lg text-xs font-semibold"
-                    :class="badge(row.severity)" x-text="row.severity"></span>
+                  <span class="px-2 py-0.5 rounded-lg text-xs font-semibold"
+                        :class="badge(row.severity)" x-text="row.severity || 'UNKNOWN'"></span>
                 </td>
                 <td class="px-4 py-2" x-text="row.cvss ?? '-'"></td>
                 <td class="px-4 py-2">
@@ -208,20 +231,21 @@
                 </td>
                 <td class="px-4 py-2" x-text="row.version || '-'"></td>
                 <td class="px-4 py-2">
-                  <template x-for="l in (row.licenses || [])"><span class="mr-1 px-1.5 py-0.5 bg-gray-100 rounded"
-                    x-text="l"></span></template>
+                  <template x-for="(l, i) in (row.licenses || [])" :key="row._key + '-lic-' + i">
+                    <span class="mr-1 px-1.5 py-0.5 bg-gray-100 rounded" x-text="l"></span>
+                  </template>
                 </td>
                 <td class="px-4 py-2">
                   <div x-text="row.id || '-'"></div>
-                  <div class="muted" x-show="row.firstSeen">first seen: <span x-text="new Date(row.firstSeen).toLocaleDateString()"></span></div>
+                  <div class="muted" x-show="row.firstSeen">first seen: <span x-text="fmtDate(row.firstSeen)"></span></div>
                 </td>
                 <td class="px-4 py-2">
                   <span class="text-xs px-2 py-1 bg-gray-100 rounded" x-text="row.dataset"></span>
                   <template x-if="row.direct"><span class="ml-1 text-[10px] px-1 py-0.5 bg-emerald-100 text-emerald-700 rounded">direct</span></template>
                 </td>
                 <td class="px-4 py-2">
-                  <template x-for="(u, i) in (row.urls || [])">
-                    <a class="text-blue-600 underline mr-2" :href="u" target="_blank" x-text="`ref${i+1}`"></a>
+                  <template x-for="(u, i) in (row.urls || [])" :key="row._key + '-url-' + i">
+                    <a class="text-blue-600 underline mr-2" :href="u" target="_blank" rel="noopener noreferrer" x-text="`ref${i+1}`"></a>
                   </template>
                 </td>
               </tr>
@@ -273,22 +297,22 @@
             </tr>
           </thead>
           <tbody>
-            <template x-for="g in groupedPaged" :key="g.key">
+            <template x-for="g in groupedPaged" :key="'comp-'+g.key">
               <tr class="border-t hover:bg-gray-50">
                 <td class="px-4 py-2">
                   <div class="font-medium" x-text="g.component || '-'"></div>
                   <div class="text-xs text-gray-500 truncate max-w-[28rem]" x-text="g.purlSample"></div>
                 </td>
                 <td class="px-4 py-2">
-                  <span class="px-2 py-1 rounded-lg text-xs font-semibold" :class="badge(g.worstSeverity)" x-text="g.worstSeverity"></span>
+                  <span class="px-2 py-1 rounded-lg text-xs font-semibold" :class="badge(g.worstSeverity)" x-text="g.worstSeverity || 'UNKNOWN'"></span>
                 </td>
                 <td class="px-4 py-2" x-text="g.maxCVSS ?? '-'"></td>
                 <td class="px-4 py-2" x-text="g.vulnCount"></td>
                 <td class="px-4 py-2">
-                  <template x-for="d in g.datasets"><span class="mr-1 chip bg-gray-100" x-text="d"></span></template>
+                  <template x-for="(d, i) in g.datasets" :key="g.key + '-ds-' + i"><span class="mr-1 chip bg-gray-100" x-text="d"></span></template>
                 </td>
                 <td class="px-4 py-2">
-                  <template x-for="l in g.licenses"><span class="mr-1 chip bg-gray-100" x-text="l"></span></template>
+                  <template x-for="(l, i) in g.licenses" :key="g.key + '-lic-' + i"><span class="mr-1 chip bg-gray-100" x-text="l"></span></template>
                 </td>
               </tr>
             </template>
@@ -313,12 +337,12 @@
         <div class="text-sm">Compare</div>
         <select x-model="cmpA" @change="buildCompare" class="px-3 py-2 border rounded-xl">
           <option value="">Pick Dataset A</option>
-          <template x-for="d in datasets" :key="d.id"><option :value="d.id" x-text="d.id"></option></template>
+          <template x-for="d in datasets" :key="d._key + '-A'"><option :value="d.id" x-text="d.id"></option></template>
         </select>
         <span class="text-sm">vs</span>
         <select x-model="cmpB" @change="buildCompare" class="px-3 py-2 border rounded-xl">
           <option value="">Pick Dataset B</option>
-          <template x-for="d in datasets" :key="d.id"><option :value="d.id" x-text="d.id"></option></template>
+          <template x-for="d in datasets" :key="d._key + '-B'"><option :value="d.id" x-text="d.id"></option></template>
         </select>
       </div>
 
@@ -328,7 +352,7 @@
             <div class="font-medium mb-2" x-text="cmpA"></div>
             <div class="text-sm">Total: <span x-text="cmpStats.A.total"></span></div>
             <ul class="mt-2 text-sm">
-              <template x-for="s in ['CRITICAL','HIGH','MEDIUM','LOW','INFO']" :key="s">
+              <template x-for="s in ['CRITICAL','HIGH','MEDIUM','LOW','INFO']" :key="'A-'+s">
                 <li><span x-text="s"></span>: <span x-text="cmpStats.A.sev[s] || 0"></span></li>
               </template>
             </ul>
@@ -337,7 +361,7 @@
             <div class="font-medium mb-2" x-text="cmpB"></div>
             <div class="text-sm">Total: <span x-text="cmpStats.B.total"></span></div>
             <ul class="mt-2 text-sm">
-              <template x-for="s in ['CRITICAL','HIGH','MEDIUM','LOW','INFO']" :key="s">
+              <template x-for="s in ['CRITICAL','HIGH','MEDIUM','LOW','INFO']" :key="'B-'+s">
                 <li><span x-text="s"></span>: <span x-text="cmpStats.B.sev[s] || 0"></span></li>
               </template>
             </ul>
@@ -346,8 +370,10 @@
             <div class="font-medium mb-2">Delta (B − A)</div>
             <div class="text-sm">Total: <span x-text="cmpStats.delta.total"></span></div>
             <ul class="mt-2 text-sm">
-              <template x-for="s in ['CRITICAL','HIGH','MEDIUM','LOW','INFO']" :key="s">
-                <li><span x-text="s"></span>: <span :class="cmpStats.delta.sev[s]>0?'text-red-600':(cmpStats.delta.sev[s]<0?'text-emerald-600':'')" x-text="cmpStats.delta.sev[s]"></span></li>
+              <template x-for="s in ['CRITICAL','HIGH','MEDIUM','LOW','INFO']" :key="'D-'+s">
+                <li><span x-text="s"></span>:
+                  <span :class="cmpStats.delta.sev[s]>0?'text-red-600':(cmpStats.delta.sev[s]<0?'text-emerald-600':'')" x-text="cmpStats.delta.sev[s]"></span>
+                </li>
               </template>
             </ul>
           </div>
@@ -359,13 +385,13 @@
           <div class="card">
             <div class="font-medium mb-2">Only in <span x-text="cmpA"></span></div>
             <ul class="max-h-72 overflow-auto text-sm list-disc pl-5">
-              <template x-for="id in cmpStats.onlyA" :key="id"><li x-text="id"></li></template>
+              <template x-for="id in cmpStats.onlyA" :key="'onlyA-'+id"><li x-text="id"></li></template>
             </ul>
           </div>
           <div class="card">
             <div class="font-medium mb-2">Only in <span x-text="cmpB"></span></div>
             <ul class="max-h-72 overflow-auto text-sm list-disc pl-5">
-              <template x-for="id in cmpStats.onlyB" :key="id"><li x-text="id"></li></template>
+              <template x-for="id in cmpStats.onlyB" :key="'onlyB-'+id"><li x-text="id"></li></template>
             </ul>
           </div>
         </div>
@@ -374,334 +400,327 @@
   </main>
 
   <script>
-    function app(){
-      return {
-        // data
-        items: [],
-        filtered: [],
-        paged: [],
-        datasets: [],
-        overall: { total: 0, severityCounts: {}, delta: null, severityDelta: {} },
-        history: { entries: [] },
-        metrics: { fixAvailabilityRate:0, ttfMedianDays:null, openAgeMedianDays:null, oldestOpen:[], topCVEs:[] },
+  function app(){
+    return {
+      // state
+      items: [],
+      filtered: [],
+      paged: [],
+      datasets: [],
+      overall: { total: 0, severityCounts: {}, delta: null, severityDelta: {} },
+      history: { entries: [] },
+      metrics: { fixAvailabilityRate:0, ttfMedianDays:null, openAgeMedianDays:null, oldestOpen:[], topCVEs:[] },
 
-        // filters
-        dataset: "",
-        q: "",
-        severity: "",
-        fix: "",
-        cvssMin: 0,
-        onlyDirect: false,
+      // filters
+      dataset: "", q: "", severity: "", fix: "", cvssMin: 0, onlyDirect: false,
 
-        // sorting/paging (vulns)
-        sortKey: "severityRank",
-        sortDir: "desc",
-        page: 0,
-        perPage: 50,
-        pages: 0,
+      // sort/paging
+      sortKey: "severityRank", sortDir: "desc", page: 0, perPage: 50, pages: 0,
 
-        // components tab
-        tab: "vulns",
-        grouped: [],
-        groupedPaged: [],
-        compSortKey: "vulnCount",
-        compSortDir: "desc",
-        compPage: 0,
-        compPerPage: 50,
-        compPages: 0,
+      // components tab
+      tab: "vulns",
+      grouped: [], groupedPaged: [],
+      compSortKey: "vulnCount", compSortDir: "desc", compPage: 0, compPerPage: 50, compPages: 0,
 
-        // compare
-        cmpA: "",
-        cmpB: "",
-        cmpReady: false,
-        cmpStats: { A:{total:0,sev:{}}, B:{total:0,sev:{}}, delta:{total:0,sev:{}}, onlyA:[], onlyB:[] },
+      // compare
+      cmpA: "", cmpB: "", cmpReady: false,
+      cmpStats: { A:{total:0,sev:{}}, B:{total:0,sev:{}}, delta:{total:0,sev:{}}, onlyA:[], onlyB:[] },
 
-        // charts
-        donutChart: null,
-        sparks: {},
+      // charts
+      donutChart: null, sparks: {}, chartsReady: false,
 
-        metaText: "",
-        baseTab: "px-3 py-2 text-sm border-b-2 border-transparent text-gray-500",
-        activeTab: "px-3 py-2 text-sm border-b-2 border-blue-600 text-blue-700",
+      metaText: "",
+      baseTab: "px-3 py-2 text-sm border-b-2 border-transparent text-gray-500",
+      activeTab: "px-3 py-2 text-sm border-b-2 border-blue-600 text-blue-700",
 
-        async init(){
-          const snap = await fetch("./public/sbom-index.json?_=" + Date.now()).then(r => r.json());
-          this.items = snap.items || [];
-          this.datasets = (snap.datasets || []).sort((a,b)=>a.id.localeCompare(b.id));
-          this.overall = snap.overall || this.overall;
-          this.metrics = snap.metrics || this.metrics;
-          this.metaText = `updated ${new Date(snap.generatedAt).toLocaleString()}`;
+      async init(){
+        // robust fetch with fallbacks
+        const snap = await fetch("./public/sbom-index.json?_=" + Date.now()).then(r => r.json());
+        const hist = await fetch("./public/history.json?_=" + Date.now()).then(r => r.json()).catch(() => ({ entries: [] }));
 
-          try { this.history = await fetch("./public/history.json?_=" + Date.now()).then(r => r.json()); }
-          catch { this.history = { entries: [] }; }
+        // normalize & add stable keys to avoid Alpine duplicate-key warnings
+        this.items = (snap.items || []).map((r, idx) => ({
+          ...r,
+          _key: (r.dataset || 'ds') + '::' + (r.id || (r.component || 'comp') + '@' + (r.version || '')) + '::' + idx
+        }));
+        this.datasets = (snap.datasets || [])
+          .map((d, i) => ({ ...d, _key: 'ds-' + (d.id || i) }))
+          .sort((a,b)=>String(a.id).localeCompare(String(b.id)));
 
-          this.restoreFromHash();
-          this.applyFilters(true);
+        this.overall = snap.overall || this.overall;
+        this.metrics = snap.metrics || this.metrics;
+        this.history = hist;
+        this.metaText = snap.generatedAt ? `updated ${new Date(snap.generatedAt).toLocaleString()}` : '';
+
+        this.restoreFromHash();
+        this.applyFilters(true);
+
+        // draw charts after DOM is painted to avoid null ctx errors
+        this.$nextTick(() => {
           this.drawDonut();
           this.drawSparklines();
-        },
+          this.chartsReady = true;
+        });
+      },
 
-        // visuals
-        badge(sev){
-          const s = (sev||"").toUpperCase();
-          const base = "px-2 py-0.5 rounded-lg text-xs font-semibold";
-          if (s==="CRITICAL") return base+" bg-red-600 text-white";
-          if (s==="HIGH") return base+" bg-red-200 text-red-800";
-          if (s==="MEDIUM") return base+" bg-amber-100 text-amber-800";
-          if (s==="LOW") return base+" bg-green-100 text-green-800";
-          return base+" bg-gray-100 text-gray-800";
-        },
-        deltaBadge(d){
-          if (d === null || d === undefined) return '<span class="text-gray-400">–</span>';
-          if (d > 0) return `<span class="text-red-600">▲ +${d}</span>`;
-          if (d < 0) return `<span class="text-emerald-600">▼ ${d}</span>`;
-          return '<span class="text-gray-600">0</span>';
-        },
+      // utils
+      fmtDate(iso){ try { return new Date(iso).toLocaleDateString(); } catch { return '-'; } },
 
-        // filtering/sorting
-        applyFilters(buildGroup=false){
-          const q = this.q.trim().toLowerCase();
-          const sev = this.severity;
-          const fix = this.fix;
-          const cv = Number(this.cvssMin) || 0;
-          const ds = this.dataset;
+      badge(sev){
+        const s = (sev||"").toUpperCase();
+        const base = "px-2 py-0.5 rounded-lg text-xs font-semibold";
+        if (s==="CRITICAL") return base+" bg-red-600 text-white";
+        if (s==="HIGH") return base+" bg-red-200 text-red-800";
+        if (s==="MEDIUM") return base+" bg-amber-100 text-amber-800";
+        if (s==="LOW") return base+" bg-green-100 text-green-800";
+        return base+" bg-gray-100 text-gray-800";
+      },
+      deltaBadge(d){
+        if (d === null || d === undefined) return '<span class="text-gray-400">–</span>';
+        if (d > 0) return `<span class="text-red-600">▲ +${d}</span>`;
+        if (d < 0) return `<span class="text-emerald-600">▼ ${d}</span>`;
+        return '<span class="text-gray-600">0</span>';
+      },
 
-          this.filtered = this.items.filter(r => {
-            if (ds && r.dataset !== ds) return false;
-            if (sev && (r.severity||"").toUpperCase() !== sev) return false;
-            if (this.onlyDirect && !r.direct) return false;
-            if (cv && (r.cvss ?? -1) < cv) return false;
-            if (fix === "has" && !(r.fixedVersions || []).length) return false;
-            if (fix === "none" && (r.fixedVersions || []).length) return false;
-            if (q) {
-              const t = [r.component, r.purl, r.id, (r.licenses||[]).join(" "), (r.dataset||"")].join(" ").toLowerCase();
-              if (!t.includes(q)) return false;
-            }
-            return true;
-          });
+      // filtering/sorting
+      applyFilters(buildGroup=false){
+        const q = this.q.trim().toLowerCase();
+        const sev = this.severity;
+        const fix = this.fix;
+        const cv = Number(this.cvssMin) || 0;
+        const ds = this.dataset;
 
-          const key = this.sortKey;
-          const dir = this.sortDir === "desc" ? -1 : 1;
-          this.filtered.sort((a,b)=>{
-            const A = (a[key] ?? "");
-            const B = (b[key] ?? "");
-            if (typeof A === "number" && typeof B === "number") return (A-B)*dir;
-            return String(A).localeCompare(String(B)) * dir;
-          });
-
-          this.page = 0;
-          this.paginate();
-          this.persistToHash();
-
-          if (buildGroup) this.buildGrouped();
-          else this.applyGroup();
-        },
-        paginate(){
-          this.pages = Math.max(1, Math.ceil(this.filtered.length / this.perPage));
-          const start = this.page * this.perPage;
-          this.paged = this.filtered.slice(start, start + this.perPage);
-        },
-        next(){ if (this.page+1 < this.pages){ this.page++; this.paginate(); this.persistToHash(); } },
-        prev(){ if (this.page>0){ this.page--; this.paginate(); this.persistToHash(); } },
-
-        // CSV export of current filtered rows
-        exportCSV(){
-          const rows = this.filtered;
-          if (!rows.length) { alert("No rows to export."); return; }
-          const header = ["severity","cvss","component","version","purl","licenses","id","dataset","links","firstSeen"];
-          const lines = [header.join(",")];
-          for (const r of rows) {
-            const csv = [
-              r.severity ?? "",
-              r.cvss ?? "",
-              r.component ?? "",
-              r.version ?? "",
-              r.purl ?? "",
-              (r.licenses||[]).join("|"),
-              r.id ?? "",
-              r.dataset ?? "",
-              (r.urls||[]).join("|"),
-              r.firstSeen ?? ""
-            ].map(x => `"${String(x).replace(/"/g,'""')}"`).join(",");
-            lines.push(csv);
+        this.filtered = this.items.filter(r => {
+          if (ds && r.dataset !== ds) return false;
+          if (sev && (r.severity||"").toUpperCase() !== sev) return false;
+          if (this.onlyDirect && !r.direct) return false;
+          if (cv && (r.cvss ?? -1) < cv) return false;
+          if (fix === "has" && !(r.fixedVersions || []).length) return false;
+          if (fix === "none" && (r.fixedVersions || []).length) return false;
+          if (q) {
+            const t = [r.component, r.purl, r.id, (r.licenses||[]).join(" "), (r.dataset||"")].join(" ").toLowerCase();
+            if (!t.includes(q)) return false;
           }
-          const blob = new Blob([lines.join("\n")], {type: "text/csv;charset=utf-8;"});
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = "sbom-filtered.csv";
-          a.click();
-          URL.revokeObjectURL(url);
-        },
+          return true;
+        });
 
-        // Group-by Components
-        buildGrouped(){
-          const byKey = new Map();
-          for (const r of this.filtered) {
-            const key = (r.component || "unknown").toLowerCase();
-            const g = byKey.get(key) || {
-              key, component: r.component || "unknown", purlSample: r.purl || "",
-              datasets: new Set(), licenses: new Set(),
-              vulnCount: 0, worstSeverity: "UNKNOWN", worstSeverityRank: -1, maxCVSS: null
-            };
-            g.datasets.add(r.dataset);
-            (r.licenses||[]).forEach(l => g.licenses.add(l));
-            g.vulnCount += 1;
-            if ((r.severityRank ?? -1) > g.worstSeverityRank){
-              g.worstSeverityRank = r.severityRank ?? -1;
-              g.worstSeverity = (r.severity || "UNKNOWN").toUpperCase();
-            }
-            if (r.cvss != null) g.maxCVSS = Math.max(g.maxCVSS ?? -Infinity, r.cvss);
-            if (!g.purlSample && r.purl) g.purlSample = r.purl;
-            byKey.set(key, g);
-          }
-          this.grouped = Array.from(byKey.values()).map(g => ({
-            ...g,
-            datasets: Array.from(g.datasets).sort(),
-            licenses: Array.from(g.licenses).sort()
-          }));
-          this.applyGroup();
-        },
-        applyGroup(){
-          const key = this.compSortKey;
-          const dir = this.compSortDir === "desc" ? -1 : 1;
-          this.grouped.sort((a,b)=>{
-            const A = (a[key] ?? "");
-            const B = (b[key] ?? "");
-            if (typeof A === "number" && typeof B === "number") return (A-B)*dir;
-            return String(A).localeCompare(String(B)) * dir;
-          });
-          this.compPage = 0;
-          this.groupPaginate();
-        },
-        groupPaginate(){
-          this.compPages = Math.max(1, Math.ceil(this.grouped.length / this.compPerPage));
-          const start = this.compPage * this.compPerPage;
-          this.groupedPaged = this.grouped.slice(start, start + this.compPerPage);
-        },
-        compNext(){ if (this.compPage+1 < this.compPages){ this.compPage++; this.groupPaginate(); } },
-        compPrev(){ if (this.compPage>0){ this.compPage--; this.groupPaginate(); } },
+        const key = this.sortKey;
+        const dir = this.sortDir === "desc" ? -1 : 1;
+        this.filtered.sort((a,b)=>{
+          const A = (a[key] ?? "");
+          const B = (b[key] ?? "");
+          if (typeof A === "number" && typeof B === "number") return (A-B)*dir;
+          return String(A).localeCompare(String(B)) * dir;
+        });
 
-        // Compare datasets
-        buildCompare(){
-          this.cmpReady = false;
-          if (!this.cmpA || !this.cmpB || this.cmpA===this.cmpB) return;
-          const A = this.items.filter(x => x.dataset===this.cmpA);
-          const B = this.items.filter(x => x.dataset===this.cmpB);
-          const sevCount = list => list.reduce((acc,r)=>{const s=(r.severity||"UNKNOWN").toUpperCase(); acc[s]=(acc[s]||0)+1; return acc;},{});
-          const ids = list => new Set(list.map(r => r.id || `${r.component}@${r.version||''}`));
-          const setA = ids(A), setB = ids(B);
-          const onlyA = [...setA].filter(x => !setB.has(x)).slice(0,500);
-          const onlyB = [...setB].filter(x => !setA.has(x)).slice(0,500);
-          const sevA = sevCount(A), sevB = sevCount(B);
-          const deltaSev = {};
-          for (const s of ['CRITICAL','HIGH','MEDIUM','LOW','INFO','UNKNOWN']) deltaSev[s] = (sevB[s]||0)-(sevA[s]||0);
-          this.cmpStats = {
-            A: { total: A.length, sev: sevA },
-            B: { total: B.length, sev: sevB },
-            delta: { total: B.length - A.length, sev: deltaSev },
-            onlyA, onlyB
-          };
-          this.cmpReady = true;
-        },
+        this.page = 0;
+        this.paginate();
+        this.persistToHash();
 
-        // Top CVE helper
-        applyTopCVE(id){
-          this.q = id || "";
-          this.applyFilters(true);
-        },
+        if (buildGroup) this.buildGrouped();
+        else this.applyGroup();
+      },
+      paginate(){
+        this.pages = Math.max(1, Math.ceil(this.filtered.length / this.perPage));
+        const start = this.page * this.perPage;
+        this.paged = this.filtered.slice(start, start + this.perPage);
+      },
+      next(){ if (this.page+1 < this.pages){ this.page++; this.paginate(); this.persistToHash(); } },
+      prev(){ if (this.page>0){ this.page--; this.paginate(); this.persistToHash(); } },
 
-        // Charts
-        drawDonut(){
-          const ctx = document.getElementById("donut");
-          if (!ctx) return;
-          const sev = this.overall.severityCounts || {};
-          const labels = ['CRITICAL','HIGH','MEDIUM','LOW','INFO'];
-          const data = labels.map(k => sev[k] || 0);
-          if (this.donutChart) this.donutChart.destroy();
-          this.donutChart = new Chart(ctx, {
-            type: 'doughnut',
-            data: { labels, datasets: [{ data }] },
-            options: { plugins: { legend: { position: 'bottom' } }, cutout: '65%' }
-          });
-        },
-        drawSparklines(){
-          const entries = (this.history.entries || []).slice(-24); // last 24 points
-          const labels = entries.map(e => new Date(e.generatedAt).toLocaleDateString());
-          const total = entries.map(e => e.overall?.total || 0);
-          this.makeSpark('sparkTotal', labels, total);
-          for (const k of ['CRITICAL','HIGH','MEDIUM','LOW']) {
-            const arr = entries.map(e => e.overall?.severityCounts?.[k] || 0);
-            this.makeSpark(`spark-${k}`, labels, arr);
-          }
-        },
-        makeSpark(id, labels, data){
-          const el = document.getElementById(id);
-          if (!el) return;
-          if (this.sparks[id]) this.sparks[id].destroy();
-          this.sparks[id] = new Chart(el, {
-            type: 'line',
-            data: { labels, datasets: [{ data, tension: 0.3, pointRadius: 0, borderWidth: 2 }] },
-            options: {
-              responsive: true,
-              plugins: { legend: { display: false }, tooltip: { enabled: true } },
-              scales: { x: { display: false }, y: { display: false } },
-              elements: { line: { fill: false } }
-            }
-          });
-        },
-
-        // save/load view (localStorage)
-        saveView(){
-          const s = {
-            q:this.q, dataset:this.dataset, severity:this.severity, fix:this.fix,
-            cvssMin:this.cvssMin, onlyDirect:this.onlyDirect,
-            sortKey:this.sortKey, sortDir:this.sortDir, tab:this.tab
-          };
-          localStorage.setItem("sbom_view", JSON.stringify(s));
-          alert("View saved.");
-        },
-        loadView(){
-          const s = JSON.parse(localStorage.getItem("sbom_view") || "null");
-          if (!s) { alert("No saved view."); return; }
-          Object.assign(this, s);
-          this.applyFilters(true);
-        },
-
-        // state in URL
-        persistToHash(){
-          const h = new URLSearchParams({
-            tab: this.tab,
-            q: this.q || "", ds: this.dataset || "", sev: this.severity || "",
-            fix: this.fix || "", cvss: String(this.cvssMin || 0),
-            dir: this.sortDir, key: this.sortKey, dirc: this.onlyDirect ? "1" : "0",
-            p: String(this.page),
-            cdir: this.compSortDir, ckey: this.compSortKey, cp: String(this.compPage),
-            cmpA: this.cmpA || "", cmpB: this.cmpB || ""
-          }).toString();
-          location.hash = h;
-        },
-        restoreFromHash(){
-          const s = new URLSearchParams(location.hash.replace(/^#/, ""));
-          this.tab = s.get("tab") || this.tab;
-          this.q = s.get("q") || this.q;
-          this.dataset = s.get("ds") || this.dataset;
-          this.severity = s.get("sev") || this.severity;
-          this.fix = s.get("fix") || this.fix;
-          this.cvssMin = Number(s.get("cvss") || this.cvssMin || 0);
-          this.sortDir = s.get("dir") || this.sortDir;
-          this.sortKey = s.get("key") || this.sortKey;
-          this.onlyDirect = s.get("dirc")==="1" ? true : this.onlyDirect;
-          this.page = Number(s.get("p") || this.page || 0);
-          this.compSortDir = s.get("cdir") || this.compSortDir;
-          this.compSortKey = s.get("ckey") || this.compSortKey;
-          this.compPage = Number(s.get("cp") || this.compPage || 0);
-          this.cmpA = s.get("cmpA") || this.cmpA;
-          this.cmpB = s.get("cmpB") || this.cmpB;
-          if (this.cmpA && this.cmpB && this.cmpA !== this.cmpB) this.buildCompare();
+      // CSV
+      exportCSV(){
+        const rows = this.filtered;
+        if (!rows.length) { alert("No rows to export."); return; }
+        const header = ["severity","cvss","component","version","purl","licenses","id","dataset","links","firstSeen","direct"];
+        const lines = [header.join(",")];
+        for (const r of rows) {
+          const csv = [
+            r.severity ?? "",
+            r.cvss ?? "",
+            r.component ?? "",
+            r.version ?? "",
+            r.purl ?? "",
+            (r.licenses||[]).join("|"),
+            r.id ?? "",
+            r.dataset ?? "",
+            (r.urls||[]).join("|"),
+            r.firstSeen ?? "",
+            r.direct ? "yes" : "no"
+          ].map(x => `"${String(x).replace(/"/g,'""')}"`).join(",");
+          lines.push(csv);
         }
+        const blob = new Blob([lines.join("\n")], {type: "text/csv;charset=utf-8;"});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = "sbom-filtered.csv"; a.click();
+        URL.revokeObjectURL(url);
+      },
+
+      // group-by components
+      buildGrouped(){
+        const byKey = new Map();
+        for (const r of this.filtered) {
+          const key = (r.component || "unknown").toLowerCase();
+          const g = byKey.get(key) || {
+            key, component: r.component || "unknown", purlSample: r.purl || "",
+            datasets: new Set(), licenses: new Set(),
+            vulnCount: 0, worstSeverity: "UNKNOWN", worstSeverityRank: -1, maxCVSS: null
+          };
+          g.datasets.add(r.dataset);
+          (r.licenses||[]).forEach(l => g.licenses.add(l));
+          g.vulnCount += 1;
+          if ((r.severityRank ?? -1) > g.worstSeverityRank){
+            g.worstSeverityRank = r.severityRank ?? -1;
+            g.worstSeverity = (r.severity || "UNKNOWN").toUpperCase();
+          }
+          if (r.cvss != null) g.maxCVSS = Math.max(g.maxCVSS ?? -Infinity, r.cvss);
+          if (!g.purlSample && r.purl) g.purlSample = r.purl;
+          byKey.set(key, g);
+        }
+        this.grouped = Array.from(byKey.values()).map(g => ({
+          ...g,
+          datasets: Array.from(g.datasets).sort(),
+          licenses: Array.from(g.licenses).sort()
+        }));
+        this.applyGroup();
+      },
+      applyGroup(){
+        const key = this.compSortKey;
+        const dir = this.compSortDir === "desc" ? -1 : 1;
+        this.grouped.sort((a,b)=>{
+          const A = (a[key] ?? "");
+          const B = (b[key] ?? "");
+          if (typeof A === "number" && typeof B === "number") return (A-B)*dir;
+          return String(A).localeCompare(String(B)) * dir;
+        });
+        this.compPage = 0;
+        this.groupPaginate();
+      },
+      groupPaginate(){
+        this.compPages = Math.max(1, Math.ceil(this.grouped.length / this.compPerPage));
+        const start = this.compPage * this.compPerPage;
+        this.groupedPaged = this.grouped.slice(start, start + this.compPerPage);
+      },
+      compNext(){ if (this.compPage+1 < this.compPages){ this.compPage++; this.groupPaginate(); } },
+      compPrev(){ if (this.compPage>0){ this.compPage--; this.groupPaginate(); } },
+
+      // compare
+      buildCompare(){
+        this.cmpReady = false;
+        if (!this.cmpA || !this.cmpB || this.cmpA===this.cmpB) return;
+        const A = this.items.filter(x => x.dataset===this.cmpA);
+        const B = this.items.filter(x => x.dataset===this.cmpB);
+        const sevCount = list => list.reduce((acc,r)=>{const s=(r.severity||"UNKNOWN").toUpperCase(); acc[s]=(acc[s]||0)+1; return acc;}, {});
+        const ids = list => new Set(list.map(r => r.id || `${r.component}@${r.version||''}`));
+        const setA = ids(A), setB = ids(B);
+        const onlyA = [...setA].filter(x => !setB.has(x)).slice(0,500);
+        const onlyB = [...setB].filter(x => !setA.has(x)).slice(0,500);
+        const sevA = sevCount(A), sevB = sevCount(B);
+        const deltaSev = {};
+        for (const s of ['CRITICAL','HIGH','MEDIUM','LOW','INFO','UNKNOWN']) deltaSev[s] = (sevB[s]||0)-(sevA[s]||0);
+        this.cmpStats = {
+          A: { total: A.length, sev: sevA },
+          B: { total: B.length, sev: sevB },
+          delta: { total: B.length - A.length, sev: deltaSev },
+          onlyA, onlyB
+        };
+        this.cmpReady = true;
+      },
+
+      // top CVE helper
+      applyTopCVE(id){ this.q = id || ""; this.applyFilters(true); },
+
+      // charts (guard against null canvases & destroy before recreate)
+      drawDonut(){
+        const el = document.getElementById("donut");
+        if (!el || !window.Chart) return;
+        const sev = this.overall.severityCounts || {};
+        const labels = ['CRITICAL','HIGH','MEDIUM','LOW','INFO'];
+        const data = labels.map(k => sev[k] || 0);
+        if (this.donutChart) try{ this.donutChart.destroy(); }catch(e){}
+        this.donutChart = new Chart(el, {
+          type: 'doughnut',
+          data: { labels, datasets: [{ data }] },
+          options: { plugins: { legend: { position: 'bottom' } }, cutout: '65%' }
+        });
+      },
+      drawSparklines(){
+        const entries = (this.history.entries || []).slice(-24);
+        const labels = entries.map(e => new Date(e.generatedAt).toLocaleDateString());
+        const total = entries.map(e => e.overall?.total || 0);
+        this.makeSpark('sparkTotal', labels, total);
+        for (const k of ['CRITICAL','HIGH','MEDIUM','LOW']) {
+          const arr = entries.map(e => e.overall?.severityCounts?.[k] || 0);
+          this.makeSpark(`spark-${k}`, labels, arr);
+        }
+      },
+      makeSpark(id, labels, data){
+        const el = document.getElementById(id);
+        if (!el || !window.Chart) return;
+        if (this.sparks[id]) try{ this.sparks[id].destroy(); }catch(e){}
+        this.sparks[id] = new Chart(el, {
+          type: 'line',
+          data: { labels, datasets: [{ data, tension: 0.3, pointRadius: 0, borderWidth: 2 }] },
+          options: {
+            responsive: true, plugins: { legend: { display: false }, tooltip: { enabled: true } },
+            scales: { x: { display: false }, y: { display: false } },
+            elements: { line: { fill: false } }
+          }
+        });
+      },
+
+      // save/load view
+      saveView(){
+        const s = {
+          q:this.q, dataset:this.dataset, severity:this.severity, fix:this.fix,
+          cvssMin:this.cvssMin, onlyDirect:this.onlyDirect,
+          sortKey:this.sortKey, sortDir:this.sortDir, tab:this.tab
+        };
+        localStorage.setItem("sbom_view", JSON.stringify(s));
+        alert("View saved.");
+      },
+      loadView(){
+        const s = JSON.parse(localStorage.getItem("sbom_view") || "null");
+        if (!s) { alert("No saved view."); return; }
+        Object.assign(this, s);
+        this.applyFilters(true);
+      },
+
+      // URL state
+      persistToHash(){
+        const h = new URLSearchParams({
+          tab: this.tab,
+          q: this.q || "", ds: this.dataset || "", sev: this.severity || "",
+          fix: this.fix || "", cvss: String(this.cvssMin || 0),
+          dir: this.sortDir, key: this.sortKey, dirc: this.onlyDirect ? "1" : "0",
+          p: String(this.page),
+          cdir: this.compSortDir, ckey: this.compSortKey, cp: String(this.compPage),
+          cmpA: this.cmpA || "", cmpB: this.cmpB || ""
+        }).toString();
+        location.hash = h;
+      },
+      restoreFromHash(){
+        const s = new URLSearchParams(location.hash.replace(/^#/, ""));
+        this.tab = s.get("tab") || this.tab;
+        this.q = s.get("q") || this.q;
+        this.dataset = s.get("ds") || this.dataset;
+        this.severity = s.get("sev") || this.severity;
+        this.fix = s.get("fix") || this.fix;
+        this.cvssMin = Number(s.get("cvss") || this.cvssMin || 0);
+        this.sortDir = s.get("dir") || this.sortDir;
+        this.sortKey = s.get("key") || this.sortKey;
+        this.onlyDirect = s.get("dirc")==="1" ? true : this.onlyDirect;
+        this.page = Number(s.get("p") || this.page || 0);
+        this.compSortDir = s.get("cdir") || this.compSortDir;
+        this.compSortKey = s.get("ckey") || this.compSortKey;
+        this.compPage = Number(s.get("cp") || this.compPage || 0);
+        this.cmpA = s.get("cmpA") || this.cmpA;
+        this.cmpB = s.get("cmpB") || this.cmpB;
+        if (this.cmpA && this.cmpB && this.cmpA !== this.cmpB) this.buildCompare();
       }
     }
+  }
   </script>
 </body>
 </html>
