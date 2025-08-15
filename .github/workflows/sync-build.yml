@@ -1,0 +1,45 @@
+name: Sync SBOMs & Build UI
+
+on:
+  # Triggered by Nightingale when Trivy completes
+  repository_dispatch:
+    types: [nightingale-trivy-complete]
+
+  # Fallback: run monthly at 10:30 UTC on the 1st
+  # Nightingale runs at 10:00 → we pull 30 min later
+  schedule:
+    - cron: "30 10 1 * *"
+
+  # Manual
+  workflow_dispatch: {}
+
+permissions:
+  contents: write   # commit generated files
+
+jobs:
+  sync_build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Sync SBOM artifacts from Nightingale
+        env:
+          NIGHTINGALE_TOKEN: ${{ secrets.NIGHTINGALE_TOKEN }}
+        run: npm run sync:sboms
+
+      - name: Build static UI
+        run: npm run build:ui
+
+      - name: Commit changes
+        run: |
+          git add -A
+          git commit -m "sync SBOMs + rebuild UI" || echo "No changes"
+          git push

@@ -1,0 +1,8 @@
+{
+  "artifacts": [
+    "trivy-scan-results-ghcr_io_rajanagori_nightingale_arm64",
+    "trivy-scan-results-ghcr_io_rajanagori_nightingale_backend_amd64",
+    "trivy-scan-results-ghcr_io_rajanagori_nightingale_frontend_amd64",
+    "trivy-scan-results-ghcr_io_rajanagori_nightingale_stable"
+  ]
+}
