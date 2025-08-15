@@ -244,7 +244,7 @@ function main() {
     }
   };
   writeJSON(SNAP_FILE, snapshot);
-  console.log(`✅ Wrote ${SNAP_FILE} with ${itemsWithAge.length} vulns across ${datasets.length} dataset(s).`);
+  console.log(`Wrote ${SNAP_FILE} with ${itemsWithAge.length} vulns across ${datasets.length} dataset(s).`);
 
   // 4) History for sparklines
   const hist = readJSON(HIST_FILE) || { entries: [] };
@@ -257,6 +257,6 @@ function main() {
   });
   if (hist.entries.length > 50) hist.entries = hist.entries.slice(-50);
   writeJSON(HIST_FILE, hist);
-  console.log(`🕘 Updated ${HIST_FILE} (entries: ${hist.entries.length}).`);
+  console.log(`Updated ${HIST_FILE} (entries: ${hist.entries.length}).`);
 }
 main();
