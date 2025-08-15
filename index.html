@@ -1,155 +1,126 @@
 <!doctype html>
 <html lang="en" x-data="app()" x-init="init()" class="h-full bg-gray-50">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>SBOM Explorer</title>
-  <meta name="color-scheme" content="light dark" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <style>
-    :root { --ring: 0 0% 9%; }
-    .card{
-      background:#fff;
-      border:1px solid #e5e7eb;         
-      border-radius:1rem;                
-      box-shadow:0 1px 2px rgba(0,0,0,0.05); 
-      padding:1rem;                      
-    }
-    .chip{
-      font-size:0.75rem;                 
-      padding:0.125rem 0.5rem;           
-      border-radius:0.25rem;            
-    }
-    [x-cloak]{ display:none !important; }
-    .muted{
-      font-size:0.75rem;                 
-      color:#6b7280;                     
-    }
-    .kbd{
-      display:inline-flex;
-      align-items:center;
-      background:#f3f4f6;                
-      color:#374151;                     
-      border:1px solid #e5e7eb;          
-      border-radius:0.25rem;
-      padding:0.125rem 0.375rem;         
-      font-size:11px;
-      font-weight:500;
-    }
-    .tbl{ table-layout:fixed; }
-    .tbl th, .tbl td{ vertical-align:top; }
-    .sticky-th{ position:sticky; top:0; z-index:5; }
+    [x-cloak]{display:none!important}
+    .card{ @apply bg-white border rounded-2xl shadow-sm p-4 }
+    .chip{ @apply text-xs px-2 py-0.5 rounded }
+    .muted{ @apply text-xs text-gray-500 }
+    /* Virtual list: keep the table height stable, only paint visible items */
+    .vlist-viewport{ position:relative; overflow:auto; will-change:transform }
+    .vlist-spacer{ height: var(--vlist-total, 0px) }
+    .vlist-inner{ position:absolute; inset:0 auto auto 0; transform: translateY(var(--vlist-offset, 0px)) }
+    /* Sticky header */
+    thead th{ @apply bg-gray-50 sticky top-0 z-10 }
   </style>
 </head>
 <body class="h-full">
   <!-- Top bar -->
-  <header class="sticky top-0 z-40 bg-white/90 backdrop-blur border-b supports-[backdrop-filter]:bg-white/60">
+  <header class="sticky top-0 z-40 bg-white/90 backdrop-blur border-b">
     <div class="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3">
-      <h1 class="text-xl font-semibold">SBOM Explorer</h1>
-      <span class="text-xs text-gray-500" x-text="metaText" aria-live="polite"></span>
-      <div class="ml-auto flex gap-2 items-center">
-        <button class="px-3 py-2 border rounded-xl hover:bg-gray-50" @click="exportCSV()" title="Export current view to CSV">
-          Export CSV
-        </button>
-        <button class="px-3 py-2 border rounded-xl hover:bg-gray-50" @click="saveView()" title="Save filters to this browser">
-          Save View
-        </button>
-        <button class="px-3 py-2 border rounded-xl hover:bg-gray-50" @click="loadView()" title="Load saved filters">
-          Load View
-        </button>
+      <div class="flex items-center gap-2">
+        <span class="inline-flex items-center justify-center w-8 h-8 rounded-xl bg-blue-600 text-white font-semibold">S</span>
+        <h1 class="text-xl font-semibold">SBOM Explorer</h1>
+      </div>
+      <span class="text-xs text-gray-500" x-text="metaText"></span>
+      <div class="ml-auto flex gap-2">
+        <button class="px-3 py-2 border rounded-xl hover:bg-gray-50" @click="exportCSV()" title="Export filtered table as CSV">Export CSV</button>
+        <button class="px-3 py-2 border rounded-xl hover:bg-gray-50" @click="saveView()" title="Save current filters & sort">Save View</button>
+        <button class="px-3 py-2 border rounded-xl hover:bg-gray-50" @click="loadView()" title="Load saved filters & sort">Load View</button>
       </div>
     </div>
+
     <!-- Filters -->
-    <div class="max-w-7xl mx-auto px-4 pb-3 flex items-center gap-2 flex-wrap">
-      <div class="relative">
-        <input x-model.debounce.300ms="q" @input="applyFilters(true)" placeholder="Search (component, purl, vuln id, license)"
-          class="w-80 md:w-96 pl-9 pr-9 py-2 border rounded-xl focus:outline-none focus:ring" aria-label="Search" />
-        <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M12.9 14.32a8 8 0 111.414-1.414l4.387 4.386-1.414 1.415-4.387-4.387zM14 8a6 6 0 11-12 0 6 6 0 0112 0z" clip-rule="evenodd"/></svg>
-        <button class="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-600 underline" @click="resetFilters()">Reset</button>
-      </div>
-      <select x-model="dataset" @change="applyFilters(true)" class="px-3 py-2 border rounded-xl" aria-label="Dataset">
+    <div class="max-w-7xl mx-auto px-4 pb-3 flex flex-wrap items-center gap-2">
+      <label class="sr-only" for="q">Search</label>
+      <input id="q" x-model="q" @input="onSearchInput" placeholder="Search (component, purl, vuln id, license)"
+             class="w-full sm:w-80 px-3 py-2 border rounded-xl focus:outline-none focus:ring"/>
+
+      <select x-model="dataset" @change="applyFilters(true)" class="px-3 py-2 border rounded-xl">
         <option value="">All datasets</option>
         <template x-for="d in datasets" :key="d.id">
           <option :value="d.id" x-text="`${d.id} (${d.vulnerabilities})`"></option>
         </template>
       </select>
-      <select x-model="severity" @change="applyFilters(true)" class="px-3 py-2 border rounded-xl" aria-label="Severity">
+
+      <select x-model="severity" @change="applyFilters(true)" class="px-3 py-2 border rounded-xl">
         <option value="">All severities</option>
         <template x-for="s in ['CRITICAL','HIGH','MEDIUM','LOW','INFO','UNKNOWN']" :key="s">
           <option :value="s" x-text="s"></option>
         </template>
       </select>
-      <select x-model="fix" @change="applyFilters(true)" class="px-3 py-2 border rounded-xl" aria-label="Fix availability">
+
+      <select x-model="fix" @change="applyFilters(true)" class="px-3 py-2 border rounded-xl">
         <option value="">Fix status</option>
         <option value="has">Has fix</option>
         <option value="none">No fix</option>
       </select>
+
       <label class="flex items-center gap-2 px-3 py-2 border rounded-xl">
         <span class="text-sm">CVSS ≥</span>
-        <input type="number" min="0" max="10" step="0.1" x-model.number="cvssMin" @input="applyFilters(true)" class="w-20 outline-none" aria-label="Minimum CVSS" />
+        <input type="number" min="0" max="10" step="0.1" x-model.number="cvssMin" @input="applyFilters(true)" class="w-20 outline-none"/>
       </label>
+
       <label class="flex items-center gap-2 px-3 py-2 border rounded-xl">
         <input type="checkbox" x-model="onlyDirect" @change="applyFilters(true)">
         <span class="text-sm">Only direct</span>
       </label>
-      <div class="ml-auto flex items-center gap-2 text-sm">
-        <label class="sr-only">Sort key</label>
-        <select x-model="sortKey" @change="applyFilters()" class="px-2 py-1 border rounded-lg">
-          <option value="severityRank">Severity</option>
-          <option value="cvss">CVSS</option>
-          <option value="component">Component</option>
-          <option value="dataset">Dataset</option>
-        </select>
-        <button class="px-2 py-1 border rounded-lg" @click="sortDir = sortDir==='desc'?'asc':'desc'; applyFilters()"
-                :aria-label="sortDir==='desc' ? 'Sort descending' : 'Sort ascending'"
-                x-text="sortDir==='desc' ? '↓' : '↑'"></button>
-      </div>
-      <!-- Quick chips -->
-      <div class="w-full flex flex-wrap gap-2 text-xs mt-2" aria-label="Quick filters">
-        <button class="chip bg-red-50 text-red-700 border border-red-200" @click="severity='CRITICAL'; applyFilters(true)">Critical</button>
-        <button class="chip bg-amber-50 text-amber-700 border border-amber-200" @click="cvssMin=7; applyFilters(true)">CVSS ≥ 7</button>
-        <button class="chip bg-emerald-50 text-emerald-700 border border-emerald-200" @click="fix='has'; applyFilters(true)">Has fixes</button>
-        <button class="chip bg-gray-50 text-gray-700 border" @click="onlyDirect=true; applyFilters(true)">Direct only</button>
+
+      <!-- Quick filters -->
+      <div class="flex gap-2 ml-auto">
+        <button class="chip bg-red-600 text-white" @click="severity='CRITICAL'; applyFilters(true)">Critical</button>
+        <button class="chip bg-red-200 text-red-800" @click="severity='HIGH'; applyFilters(true)">High</button>
+        <button class="chip bg-emerald-100 text-emerald-700" @click="fix='has'; applyFilters(true)">Has Fix</button>
+        <button class="chip bg-blue-100 text-blue-800" @click="onlyDirect=true; applyFilters(true)">Direct</button>
+        <button class="chip bg-gray-100" @click="resetFilters()">Reset</button>
       </div>
     </div>
   </header>
 
   <main class="max-w-7xl mx-auto px-4 py-6">
     <!-- Summary & charts -->
-    <section class="grid grid-cols-1 lg:grid-cols-12 gap-4 mb-6" aria-label="Summary">
+    <section class="grid grid-cols-1 lg:grid-cols-12 gap-4 mb-6">
       <div class="lg:col-span-7 grid grid-cols-2 md:grid-cols-4 gap-3">
         <div class="card col-span-2">
           <div class="text-xs text-gray-500">Total Vulnerabilities</div>
           <div class="text-2xl font-semibold" x-text="overall.total"></div>
           <div class="text-xs mt-1" x-html="deltaBadge(overall.delta)"></div>
-          <div class="h-12 relative">
-            <canvas id="sparkTotal" height="40" class="mt-2"></canvas>
-          </div>
+          <canvas id="sparkTotal" height="40" class="mt-2"></canvas>
         </div>
         <template x-for="sev in ['CRITICAL','HIGH','MEDIUM','LOW']" :key="sev">
           <div class="card">
             <div class="text-xs text-gray-500" x-text="sev"></div>
             <div class="text-xl font-semibold" x-text="overall.severityCounts[sev] ?? 0"></div>
             <div class="text-xs mt-1" x-html="deltaBadge(overall.severityDelta[sev])"></div>
-            <div class="h-12 relative">
-              <canvas :id="`spark-${sev}`" height="40" class="mt-2"></canvas>
-            </div>
+            <canvas :id="`spark-${sev}`" height="40" class="mt-2"></canvas>
           </div>
         </template>
       </div>
       <div class="card lg:col-span-5">
-        <div class="text-sm font-medium mb-2">Severity distribution</div>
-        <div class="h-44"><canvas id="donut" height="160"></canvas></div>
+        <div class="flex items-center justify-between mb-2">
+          <div class="text-sm font-medium">Severity distribution</div>
+          <div class="flex items-center gap-2 text-xs text-gray-500">
+            <span class="inline-block w-2 h-2 rounded-full bg-red-600"></span> Critical
+            <span class="inline-block w-2 h-2 rounded-full bg-red-300"></span> High
+            <span class="inline-block w-2 h-2 rounded-full bg-amber-400"></span> Medium
+            <span class="inline-block w-2 h-2 rounded-full bg-green-500"></span> Low
+          </div>
+        </div>
+        <canvas id="donut" height="160"></canvas>
       </div>
     </section>
 
-    <!-- Metrics -->
-    <section class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6" aria-label="Lifecycle metrics">
+    <!-- New metrics -->
+    <section class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
       <div class="card">
         <div class="text-xs text-gray-500">Fix availability rate</div>
-        <div class="text-2xl font-semibold" x-text="(metrics.fixAvailabilityRate||0) + '%'" aria-live="polite"></div>
+        <div class="text-2xl font-semibold" x-text="(metrics.fixAvailabilityRate||0) + '%'"></div>
         <div class="muted mt-1">% of current vulns with known fixes</div>
       </div>
       <div class="card">
@@ -164,12 +135,12 @@
       </div>
     </section>
 
-    <!-- Top CVEs & Oldest Open -->
+    <!-- Top CVEs & Oldest open -->
     <section class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
       <div class="card">
         <div class="flex items-center justify-between mb-2">
           <div class="text-sm font-medium">Top CVEs (by severity & count)</div>
-          <button class="text-xs underline" @click="applyTopCVE()">Clear filter</button>
+          <button class="text-xs underline" @click="applyTopCVE()">Clear</button>
         </div>
         <template x-if="!(metrics.topCVEs||[]).length">
           <div class="muted">No CVE IDs found in current data.</div>
@@ -180,9 +151,9 @@
               <div>
                 <button class="text-blue-600 underline font-medium" @click="applyTopCVE(cve.id)" x-text="cve.id"></button>
                 <div class="muted">
-                  <span x-text="`Count: ${cve.count}`"></span>
-                  · <span x-text="`Max CVSS: ${cve.maxCVSS ?? '-'}`"></span>
-                  · <span x-text="`Datasets: ${cve.datasets.join(', ')}`"></span>
+                  <span x-text="`Count: ${cve.count}`"></span> ·
+                  <span x-text="`Max CVSS: ${cve.maxCVSS ?? '-'}`"></span> ·
+                  <span x-text="`Datasets: ${cve.datasets.join(', ')}`"></span>
                 </div>
               </div>
               <span class="chip bg-gray-100">sev rank: <span x-text="cve.worstSeverityRank"></span></span>
@@ -205,8 +176,7 @@
                 <span class="chip bg-gray-100" x-text="v.meta?.dataset"></span>
               </div>
               <div class="muted">
-                <span x-text="`${v.days} days open`"></span>
-                · <span x-text="v.meta?.component"></span>
+                <span x-text="`${v.days} days open`"></span> · <span x-text="v.meta?.component"></span>
               </div>
               <button class="text-xs text-blue-600 underline mt-1" @click="q=(v.meta?.id||''); applyFilters(true)">Filter by ID</button>
             </li>
@@ -216,84 +186,107 @@
     </section>
 
     <!-- Tabs -->
-    <div class="mb-3 border-b" role="tablist" aria-label="Data tabs">
+    <div class="mb-3 border-b">
       <nav class="-mb-px flex gap-2">
-        <button :class="tab==='vulns' ? activeTab : baseTab" @click="tab='vulns'; persistToHash()" role="tab" :aria-selected="tab==='vulns'">Vulnerabilities</button>
-        <button :class="tab==='components' ? activeTab : baseTab" @click="tab='components'; persistToHash()" role="tab" :aria-selected="tab==='components'">Components</button>
-        <button :class="tab==='compare' ? activeTab : baseTab" @click="tab='compare'; persistToHash()" role="tab" :aria-selected="tab==='compare'">Compare datasets</button>
+        <button :class="tab==='vulns' ? activeTab : baseTab" @click="tab='vulns'; persistToHash()">Vulnerabilities</button>
+        <button :class="tab==='components' ? activeTab : baseTab" @click="tab='components'; persistToHash()">Components</button>
+        <button :class="tab==='compare' ? activeTab : baseTab" @click="tab='compare'; persistToHash()">Compare datasets</button>
       </nav>
     </div>
 
-    <!-- Vulnerabilities -->
-    <section x-show="tab==='vulns'" x-cloak aria-label="Vulnerabilities table">
+    <!-- Vulnerabilities (virtualized table) -->
+    <section x-show="tab==='vulns'" x-cloak>
       <div class="mb-2 text-sm text-gray-600">
         <span x-text="`Showing ${filtered.length} of ${items.length} vulnerabilities`"></span>
       </div>
-      <div class="overflow-x-auto bg-white border rounded-2xl shadow-sm">
-        <table class="min-w-full text-sm tbl">
-          <thead class="bg-gray-50 sticky-th">
-            <tr class="text-left">
-              <th class="px-4 py-3 w-28">Severity</th>
-              <th class="px-4 py-3 w-20">CVSS</th>
-              <th class="px-4 py-3 w-[28rem]">Component</th>
-              <th class="px-4 py-3 w-24">Version</th>
-              <th class="px-4 py-3 w-52">License</th>
-              <th class="px-4 py-3 w-44">Vuln ID</th>
-              <th class="px-4 py-3 w-36">Dataset</th>
-              <th class="px-4 py-3">Links</th>
-            </tr>
-          </thead>
-          <tbody>
-            <!-- Progressive rendering for large lists -->
-            <template x-for="row in paged" :key="row._k">
-              <tr class="border-t hover:bg-gray-50">
-                <td class="px-4 py-2">
-                  <span class="px-2 py-1 rounded-lg text-xs font-semibold"
-                    :class="badge(row.severity)" x-text="row.severity"></span>
-                </td>
-                <td class="px-4 py-2" x-text="row.cvss ?? '-'" :title="row.cvss ?? ''"></td>
-                <td class="px-4 py-2">
-                  <div class="font-medium truncate" x-text="row.component || '-'" :title="row.component"></div>
-                  <div class="text-xs text-gray-500 truncate" x-text="row.purl" :title="row.purl"></div>
-                </td>
-                <td class="px-4 py-2" x-text="row.version || '-'" :title="row.version"></td>
-                <td class="px-4 py-2">
-                  <template x-for="l in (row.licenses || [])"><span class="mr-1 px-1.5 py-0.5 bg-gray-100 rounded"
-                    x-text="l"></span></template>
-                </td>
-                <td class="px-4 py-2">
-                  <div class="truncate" x-text="row.id || '-'" :title="row.id"></div>
-                  <div class="muted" x-show="row.firstSeen">first seen: <span x-text="new Date(row.firstSeen).toLocaleDateString()"></span></div>
-                </td>
-                <td class="px-4 py-2">
-                  <span class="text-xs px-2 py-1 bg-gray-100 rounded" x-text="row.dataset"></span>
-                  <template x-if="row.direct"><span class="ml-1 text-[10px] px-1 py-0.5 bg-emerald-100 text-emerald-700 rounded">direct</span></template>
-                </td>
-                <td class="px-4 py-2">
-                  <template x-for="(u, i) in (row.urls || [])">
-                    <a class="text-blue-600 underline mr-2" :href="u" target="_blank" rel="noopener" x-text="`ref${i+1}`"></a>
-                  </template>
-                </td>
-              </tr>
-            </template>
-          </tbody>
-        </table>
-      </div>
 
-      <div class="mt-4 flex items-center justify-between">
-        <div class="text-sm text-gray-600 flex items-center gap-2">
-          <span>Page <span x-text="page+1"></span> / <span x-text="pages"></span></span>
-          <span class="ml-3">Rows:</span>
-          <select class="border rounded px-2 py-1" x-model.number="perPage" @change="paginate(); persistToHash()">
-            <option :selected="perPage===25">25</option>
-            <option :selected="perPage===50">50</option>
-            <option :selected="perPage===100">100</option>
-            <option :selected="perPage===200">200</option>
-          </select>
+      <div class="bg-white border rounded-2xl shadow-sm">
+        <!-- Virtual viewport -->
+        <div class="vlist-viewport" style="max-height: 640px" @scroll.passive="onVirtualScroll" x-ref="viewport">
+          <table class="min-w-full text-sm">
+            <thead>
+              <tr class="text-left">
+                <th class="px-4 py-3">Severity</th>
+                <th class="px-4 py-3">CVSS</th>
+                <th class="px-4 py-3">Component</th>
+                <th class="px-4 py-3">Version</th>
+                <th class="px-4 py-3">License</th>
+                <th class="px-4 py-3">Vuln ID</th>
+                <th class="px-4 py-3">Dataset</th>
+                <th class="px-4 py-3">Links</th>
+              </tr>
+            </thead>
+          </table>
+
+          <!-- Spacer defines total height; inner is shifted to current window -->
+          <div class="vlist-spacer" :style="{'--vlist-total': filtered.length * rowHeight + 'px'}"></div>
+
+          <div class="vlist-inner w-full" :style="{'--vlist-offset': vStart * rowHeight + 'px'}">
+            <table class="min-w-full text-sm">
+              <tbody>
+                <template x-for="row in vWindow" :key="rowKey(row)">
+                  <tr class="border-t hover:bg-gray-50" style="height: 44px">
+                    <td class="px-4 py-2">
+                      <span class="px-2 py-0.5 rounded-lg text-xs font-semibold" :class="badge(row.severity)" x-text="row.severity"></span>
+                    </td>
+                    <td class="px-4 py-2" x-text="row.cvss ?? '-'"></td>
+                    <td class="px-4 py-2">
+                      <div class="font-medium" x-text="row.component || '-'"></div>
+                      <div class="text-xs text-gray-500 truncate max-w-[28rem]" x-text="row.purl"></div>
+                    </td>
+                    <td class="px-4 py-2" x-text="row.version || '-'"></td>
+                    <td class="px-4 py-2">
+                      <template x-for="l in (row.licenses || [])"><span class="mr-1 px-1.5 py-0.5 bg-gray-100 rounded" x-text="l"></span></template>
+                    </td>
+                    <td class="px-4 py-2">
+                      <div class="flex items-center gap-2">
+                        <span x-text="row.id || '-'"></span>
+                        <template x-if="row.firstSeen">
+                          <span class="muted">· first seen <span x-text="new Date(row.firstSeen).toLocaleDateString()"></span></span>
+                        </template>
+                      </div>
+                    </td>
+                    <td class="px-4 py-2">
+                      <span class="text-xs px-2 py-1 bg-gray-100 rounded" x-text="row.dataset"></span>
+                      <template x-if="row.direct"><span class="ml-1 text-[10px] px-1 py-0.5 bg-emerald-100 text-emerald-700 rounded">direct</span></template>
+                    </td>
+                    <td class="px-4 py-2">
+                      <template x-if="(row.urls||[]).length===0">
+                        <span class="text-gray-400">—</span>
+                      </template>
+                      <template x-if="(row.urls||[]).length">
+                        <details class="group">
+                          <summary class="cursor-pointer text-blue-600 underline select-none">refs (<span x-text="(row.urls||[]).length"></span>)</summary>
+                          <div class="mt-1 space-y-1 max-w-[28rem]">
+                            <template x-for="(u,i) in (row.urls||[])" :key="i">
+                              <a class="text-blue-600 underline block truncate" :href="u" target="_blank" x-text="u"></a>
+                            </template>
+                          </div>
+                        </details>
+                      </template>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
         </div>
-        <div class="flex gap-2">
-          <button class="px-3 py-1 border rounded-lg disabled:opacity-40" :disabled="page===0" @click="prev()">Prev</button>
-          <button class="px-3 py-1 border rounded-lg disabled:opacity-40" :disabled="page+1>=pages" @click="next()">Next</button>
+
+        <!-- Sorting -->
+        <div class="px-4 py-3 flex items-center justify-between border-t">
+          <div class="flex items-center gap-2 text-sm">
+            <label>Sort:</label>
+            <select x-model="sortKey" @change="applyFilters()" class="px-2 py-1 border rounded-lg">
+              <option value="severityRank">Severity</option>
+              <option value="cvss">CVSS</option>
+              <option value="component">Component</option>
+              <option value="dataset">Dataset</option>
+            </select>
+            <button class="px-2 py-1 border rounded-lg" @click="sortDir = sortDir==='desc'?'asc':'desc'; applyFilters()" x-text="sortDir==='desc' ? '↓' : '↑'"></button>
+          </div>
+          <div class="text-sm text-gray-600">
+            <span x-text="`Rows: ${filtered.length}`"></span>
+          </div>
         </div>
       </div>
     </section>
@@ -301,9 +294,7 @@
     <!-- Components -->
     <section x-show="tab==='components'" x-cloak>
       <div class="mb-2 flex items-center justify-between">
-        <div class="text-sm text-gray-600">
-          <span x-text="`Showing ${grouped.length} components`"></span>
-        </div>
+        <div class="text-sm text-gray-600"><span x-text="`Showing ${grouped.length} components`"></span></div>
         <div class="flex items-center gap-2 text-sm">
           <label>Sort:</label>
           <select x-model="compSortKey" @change="applyGroup" class="px-2 py-1 border rounded-lg">
@@ -312,51 +303,48 @@
             <option value="maxCVSS">Max CVSS</option>
             <option value="component">Component</option>
           </select>
-          <button class="px-2 py-1 border rounded-lg" @click="compSortDir = compSortDir==='desc'?'asc':'desc'; applyGroup()"
-                  x-text="compSortDir==='desc' ? '↓' : '↑'"></button>
+          <button class="px-2 py-1 border rounded-lg" @click="compSortDir = compSortDir==='desc'?'asc':'desc'; applyGroup()" x-text="compSortDir==='desc' ? '↓' : '↑'"></button>
         </div>
       </div>
 
       <div class="overflow-x-auto bg-white border rounded-2xl shadow-sm">
-        <table class="min-w-full text-sm tbl">
-          <thead class="bg-gray-50 sticky-th">
-            <tr class="text-left">
-              <th class="px-4 py-3 w-[28rem]">Component</th>
-              <th class="px-4 py-3 w-40">Worst Severity</th>
-              <th class="px-4 py-3 w-24">Max CVSS</th>
-              <th class="px-4 py-3 w-28">Vuln Count</th>
-              <th class="px-4 py-3">Datasets</th>
-              <th class="px-4 py-3 w-64">Licenses</th>
-            </tr>
+        <table class="min-w-full text-sm">
+          <thead>
+          <tr class="text-left">
+            <th class="px-4 py-3">Component</th>
+            <th class="px-4 py-3">Worst Severity</th>
+            <th class="px-4 py-3">Max CVSS</th>
+            <th class="px-4 py-3">Vuln Count</th>
+            <th class="px-4 py-3">Datasets</th>
+            <th class="px-4 py-3">Licenses</th>
+          </tr>
           </thead>
           <tbody>
-            <template x-for="g in groupedPaged" :key="g.key">
-              <tr class="border-t hover:bg-gray-50">
-                <td class="px-4 py-2">
-                  <div class="font-medium truncate" x-text="g.component || '-'" :title="g.component"></div>
-                  <div class="text-xs text-gray-500 truncate" x-text="g.purlSample" :title="g.purlSample"></div>
-                </td>
-                <td class="px-4 py-2">
-                  <span class="px-2 py-1 rounded-lg text-xs font-semibold" :class="badge(g.worstSeverity)" x-text="g.worstSeverity"></span>
-                </td>
-                <td class="px-4 py-2" x-text="g.maxCVSS ?? '-'" :title="g.maxCVSS ?? ''"></td>
-                <td class="px-4 py-2" x-text="g.vulnCount"></td>
-                <td class="px-4 py-2">
-                  <template x-for="d in g.datasets"><span class="mr-1 chip bg-gray-100" x-text="d"></span></template>
-                </td>
-                <td class="px-4 py-2">
-                  <template x-for="l in g.licenses"><span class="mr-1 chip bg-gray-100" x-text="l"></span></template>
-                </td>
-              </tr>
-            </template>
+          <template x-for="g in groupedPaged" :key="g.key">
+            <tr class="border-t hover:bg-gray-50">
+              <td class="px-4 py-2">
+                <div class="font-medium" x-text="g.component || '-'"></div>
+                <div class="text-xs text-gray-500 truncate max-w-[28rem]" x-text="g.purlSample"></div>
+              </td>
+              <td class="px-4 py-2">
+                <span class="px-2 py-1 rounded-lg text-xs font-semibold" :class="badge(g.worstSeverity)" x-text="g.worstSeverity"></span>
+              </td>
+              <td class="px-4 py-2" x-text="g.maxCVSS ?? '-'"></td>
+              <td class="px-4 py-2" x-text="g.vulnCount"></td>
+              <td class="px-4 py-2">
+                <template x-for="d in g.datasets"><span class="mr-1 chip bg-gray-100" x-text="d"></span></template>
+              </td>
+              <td class="px-4 py-2">
+                <template x-for="l in g.licenses"><span class="mr-1 chip bg-gray-100" x-text="l"></span></template>
+              </td>
+            </tr>
+          </template>
           </tbody>
         </table>
       </div>
 
       <div class="mt-4 flex items-center justify-between">
-        <div class="text-sm text-gray-600">
-          Page <span x-text="compPage+1"></span> / <span x-text="compPages"></span>
-        </div>
+        <div class="text-sm text-gray-600"> Page <span x-text="compPage+1"></span> / <span x-text="compPages"></span> </div>
         <div class="flex gap-2">
           <button class="px-3 py-1 border rounded-lg" :disabled="compPage===0" @click="compPrev()">Prev</button>
           <button class="px-3 py-1 border rounded-lg" :disabled="compPage+1>=compPages" @click="compNext()">Next</button>
@@ -364,7 +352,7 @@
       </div>
     </section>
 
-    <!-- Compare datasets -->
+    <!-- Compare -->
     <section x-show="tab==='compare'" x-cloak>
       <div class="card mb-4 flex flex-wrap items-center gap-3">
         <div class="text-sm">Compare</div>
@@ -377,7 +365,6 @@
           <option value="">Pick Dataset B</option>
           <template x-for="d in datasets" :key="d.id"><option :value="d.id" x-text="d.id"></option></template>
         </select>
-        <div class="ml-auto text-xs text-gray-500">Tip: hold <span class="kbd">Shift</span> to select quickly</div>
       </div>
 
       <template x-if="cmpReady">
@@ -405,7 +392,9 @@
             <div class="text-sm">Total: <span x-text="cmpStats.delta.total"></span></div>
             <ul class="mt-2 text-sm">
               <template x-for="s in ['CRITICAL','HIGH','MEDIUM','LOW','INFO']" :key="s">
-                <li><span x-text="s"></span>: <span :class="cmpStats.delta.sev[s]>0?'text-red-600':(cmpStats.delta.sev[s]<0?'text-emerald-600':'')" x-text="cmpStats.delta.sev[s]"></span></li>
+                <li><span x-text="s"></span>:
+                  <span :class="cmpStats.delta.sev[s]>0?'text-red-600':(cmpStats.delta.sev[s]<0?'text-emerald-600':'')" x-text="cmpStats.delta.sev[s]"></span>
+                </li>
               </template>
             </ul>
           </div>
@@ -417,13 +406,13 @@
           <div class="card">
             <div class="font-medium mb-2">Only in <span x-text="cmpA"></span></div>
             <ul class="max-h-72 overflow-auto text-sm list-disc pl-5">
-              <template x-for="id in cmpStats.onlyA" :key="id"><li class="truncate" x-text="id" :title="id"></li></template>
+              <template x-for="id in cmpStats.onlyA" :key="id"><li x-text="id"></li></template>
             </ul>
           </div>
           <div class="card">
             <div class="font-medium mb-2">Only in <span x-text="cmpB"></span></div>
             <ul class="max-h-72 overflow-auto text-sm list-disc pl-5">
-              <template x-for="id in cmpStats.onlyB" :key="id"><li class="truncate" x-text="id" :title="id"></li></template>
+              <template x-for="id in cmpStats.onlyB" :key="id"><li x-text="id"></li></template>
             </ul>
           </div>
         </div>
@@ -432,104 +421,63 @@
   </main>
 
   <script>
-    // Lightweight worker to offload filtering & sorting for large datasets
-    const workerSrc = `self.onmessage = (e) => {\n  const { type, payload } = e.data || {};\n  if (type !== 'filter') return;\n  const { items, params } = payload;\n  const { q, ds, sev, onlyDirect, cv, fix, sortKey, sortDir } = params;\n  const query = (q||'').trim().toLowerCase();\n  const out = [];\n  for (let i=0;i<items.length;i++){\n    const r = items[i];\n    if (ds && r.dataset !== ds) continue;\n    if (sev && (r.severity||'').toUpperCase() !== sev) continue;\n    if (onlyDirect && !r.direct) continue;\n    if (cv && (r.cvss ?? -1) < cv) continue;\n    if (fix === 'has' && !(r.fixedVersions||[]).length) continue;\n    if (fix === 'none' && (r.fixedVersions||[]).length) continue;\n    if (query){\n      const t = [r.component, r.purl, r.id, (r.licenses||[]).join(' '), (r.dataset||'')].join(' ').toLowerCase();\n      if (t.indexOf(query) === -1) continue;\n    }\n    out.push(r);\n  }\n  const key = sortKey; const dir = sortDir==='desc' ? -1 : 1;\n  out.sort((a,b)=>{\n    const A = (a[key] ?? ''); const B = (b[key] ?? '');\n    if (typeof A === 'number' && typeof B === 'number') return (A-B)*dir;\n    return (''+A).localeCompare(''+B) * dir;\n  });\n  self.postMessage({ type: 'result', rows: out });\n};`;
-
     function app(){
       return {
-        // data
-        items: [],
-        filtered: [],
-        paged: [],
+        // ------- state -------
+        items: [], filtered: [],
         datasets: [],
         overall: { total: 0, severityCounts: {}, delta: null, severityDelta: {} },
         history: { entries: [] },
         metrics: { fixAvailabilityRate:0, ttfMedianDays:null, openAgeMedianDays:null, oldestOpen:[], topCVEs:[] },
-
         // filters
-        dataset: "",
-        q: "",
-        severity: "",
-        fix: "",
-        cvssMin: 0,
-        onlyDirect: false,
-
-        // sorting/paging (vulns)
-        sortKey: "severityRank",
-        sortDir: "desc",
-        page: 0,
-        perPage: 50,
-        pages: 0,
-
+        dataset: "", q: "", severity: "", fix: "", cvssMin: 0, onlyDirect: false,
+        // sorting
+        sortKey: "severityRank", sortDir: "desc",
         // components tab
-        tab: "vulns",
-        grouped: [],
-        groupedPaged: [],
-        compSortKey: "vulnCount",
-        compSortDir: "desc",
-        compPage: 0,
-        compPerPage: 50,
-        compPages: 0,
-
+        tab: "vulns", grouped: [], groupedPaged: [], compSortKey: "vulnCount", compSortDir: "desc", compPage: 0, compPerPage: 50, compPages: 0,
         // compare
-        cmpA: "",
-        cmpB: "",
-        cmpReady: false,
-        cmpStats: { A:{total:0,sev:{}}, B:{total:0,sev:{}}, delta:{total:0,sev:{}}, onlyA:[], onlyB:[] },
-
+        cmpA: "", cmpB: "", cmpReady: false, cmpStats: { A:{total:0,sev:{}}, B:{total:0,sev:{}}, delta:{total:0,sev:{}}, onlyA:[], onlyB:[] },
         // charts
-        donutChart: null,
-        sparks: {},
-        metaText: "",
-        baseTab: "px-3 py-2 text-sm border-b-2 border-transparent text-gray-500 hover:text-gray-700",
-        activeTab: "px-3 py-2 text-sm border-b-2 border-blue-600 text-blue-700",
-
-        // perf
-        _worker: null,
-        _pending: 0,
-
+        donutChart: null, sparks: {}, metaText: "",
+        // tabs styling
+        baseTab:"px-3 py-2 text-sm border-b-2 border-transparent text-gray-500 hover:text-gray-700",
+        activeTab:"px-3 py-2 text-sm border-b-2 border-blue-600 text-blue-700",
+        // virtual list
+        rowHeight: 44, vStart: 0, vEnd: 0, vWindow: [],
+        // ------- init -------
         async init(){
-          // skeleton state
-          this.metaText = 'loading…';
-          const cacheBust = Date.now();
-          const snap = await fetch('./public/sbom-index.json?_=' + cacheBust).then(r => r.json());
-          // add stable keys once to help diffing
-          this.items = (snap.items || []).map((r, i) => ({ _k: (r.dataset||'') + '::' + (r.id||r.component||'idx'+i), ...r }));
+          const snap = await fetch("./public/sbom-index.json?_=" + Date.now(), {cache:"no-store"}).then(r => r.json());
+          this.items = snap.items || [];
           this.datasets = (snap.datasets || []).sort((a,b)=>a.id.localeCompare(b.id));
           this.overall = snap.overall || this.overall;
           this.metrics = snap.metrics || this.metrics;
           this.metaText = `updated ${new Date(snap.generatedAt).toLocaleString()}`;
 
-          try { this.history = await fetch('./public/history.json?_=' + cacheBust).then(r => r.json()); }
+          try { this.history = await fetch("./public/history.json?_=" + Date.now(), {cache:"no-store"}).then(r => r.json()); }
           catch { this.history = { entries: [] }; }
-
-          // init worker
-          const blob = new Blob([workerSrc], { type: 'application/javascript' });
-          this._worker = new Worker(URL.createObjectURL(blob));
-          this._worker.onmessage = (e) => {
-            if (e.data?.type !== 'result') return;
-            this.filtered = e.data.rows;
-            this.page = 0; this.paginate();
-            // Components get built lazily to avoid blocking UI
-            requestIdleCallback(() => this.buildGrouped());
-            this.persistToHash();
-          };
 
           this.restoreFromHash();
           this.applyFilters(true);
-          // Charts drawn after first paint to avoid layout jank
-          requestAnimationFrame(() => { this.drawDonut(); this.drawSparklines(); });
+
+          // Defer charts until idle for faster first paint
+          (window.requestIdleCallback || setTimeout)(() => {
+            this.drawDonut();
+            this.drawSparklines();
+          }, 0);
+
+          // Virtual window initial compute
+          this.onVirtualScroll();
         },
 
-        // visuals
+        // ------- UI helpers -------
         badge(sev){
-          const s = (sev||'').toUpperCase();
-          const base = 'px-2 py-0.5 rounded-lg text-xs font-semibold';
-          if (s==='CRITICAL') return base+' bg-red-600 text-white';
-          if (s==='HIGH') return base+' bg-red-200 text-red-800';
-          if (s==='MEDIUM') return base+' bg-amber-100 text-amber-800';
-          if (s==='LOW') return base+' bg-green-100 text-green-800';
-          return base+' bg-gray-100 text-gray-800';
+          const s = (sev||"").toUpperCase();
+          const base = "px-2 py-0.5 rounded-lg text-xs font-semibold";
+          if (s==="CRITICAL") return base+" bg-red-600 text-white";
+          if (s==="HIGH") return base+" bg-red-200 text-red-800";
+          if (s==="MEDIUM") return base+" bg-amber-200 text-amber-900";
+          if (s==="LOW") return base+" bg-green-200 text-green-900";
+          return base+" bg-gray-100 text-gray-800";
         },
         deltaBadge(d){
           if (d === null || d === undefined) return '<span class="text-gray-400">–</span>';
@@ -538,127 +486,245 @@
           return '<span class="text-gray-600">0</span>';
         },
 
-        // filtering/sorting via Web Worker
-        applyFilters(buildGroup=false){
-          if (!this._worker){ return; }
-          const payload = {
-            items: this.items,
-            params: {
-              q:this.q, ds:this.dataset, sev:this.severity, onlyDirect:this.onlyDirect,
-              cv:this.cvssMin||0, fix:this.fix, sortKey:this.sortKey, sortDir:this.sortDir
-            }
-          };
-          this._pending++;
-          this._worker.postMessage({ type: 'filter', payload });
-          if (buildGroup) requestIdleCallback(() => this.buildGrouped());
-        },
-        paginate(){
-          this.pages = Math.max(1, Math.ceil(this.filtered.length / this.perPage));
-          const start = this.page * this.perPage;
-          // slice cheaply; DOM updates are batched by Alpine
-          this.paged = this.filtered.slice(start, start + this.perPage);
-        },
-        next(){ if (this.page+1 < this.pages){ this.page++; this.paginate(); this.persistToHash(); } },
-        prev(){ if (this.page>0){ this.page--; this.paginate(); this.persistToHash(); } },
+        // ------- filtering/sorting (optimized) -------
+        onSearchInput: debounce(function(){ this.applyFilters(true) }, 150),
 
-        // CSV export of current filtered rows
+        applyFilters(buildGroup=false){
+          const q = this.q.trim().toLowerCase();
+          const ds = this.dataset;
+          const sev = this.severity;
+          const fix = this.fix;
+          const cv = Number(this.cvssMin) || 0;
+          const onlyDirect = this.onlyDirect;
+
+          // precompute predicate flags for speed
+          this.filtered = this.items.filter(r => {
+            if (ds && r.dataset !== ds) return false;
+            if (sev && (r.severity||"").toUpperCase() !== sev) return false;
+            if (onlyDirect && !r.direct) return false;
+            if (cv && (r.cvss ?? -1) < cv) return false;
+            if (fix === "has" && !(r.fixedVersions || []).length) return false;
+            if (fix === "none" && (r.fixedVersions || []).length) return false;
+            if (q){
+              // Build once per row
+              const t = (r._q || (r._q = [r.component, r.purl, r.id, (r.licenses||[]).join(" "), (r.dataset||"")].join(" ").toLowerCase()));
+              if (!t.includes(q)) return false;
+            }
+            return true;
+          });
+
+          const key = this.sortKey;
+          const dir = this.sortDir === "desc" ? -1 : 1;
+
+          this.filtered.sort((a,b)=>{
+            const A = a[key]; const B = b[key];
+            if (A == null && B != null) return 1;
+            if (A != null && B == null) return -1;
+            if (typeof A === "number" && typeof B === "number") return (A - B) * dir;
+            return String(A ?? "").localeCompare(String(B ?? "")) * dir;
+          });
+
+          // Update virtual window
+          this.onVirtualScroll(true);
+
+          this.persistToHash();
+          if (buildGroup) this.buildGrouped(); else this.applyGroup();
+        },
+
+        resetFilters(){
+          this.dataset=""; this.q=""; this.severity=""; this.fix="";
+          this.cvssMin=0; this.onlyDirect=false;
+          this.applyFilters(true);
+        },
+
+        // ------- virtual list logic -------
+        onVirtualScroll(reset=false){
+          const vp = this.$refs.viewport;
+          if (!vp) return;
+
+          const viewH = vp.clientHeight;
+          const scrollTop = vp.scrollTop;
+          const capacity = Math.ceil(viewH / this.rowHeight) + 6; // overscan
+          const start = Math.max(0, Math.floor(scrollTop / this.rowHeight) - 3);
+          const end = Math.min(this.filtered.length, start + capacity);
+
+          this.vStart = start;
+          this.vEnd = end;
+          this.vWindow = this.filtered.slice(start, end);
+        },
+
+        rowKey(row){ return `${row.dataset}|${row.id || (row.component || 'c')+'@'+(row.version||'')}` },
+
+        // ------- CSV export -------
         exportCSV(){
           const rows = this.filtered;
-          if (!rows.length) { alert('No rows to export.'); return; }
-          const header = ['severity','cvss','component','version','purl','licenses','id','dataset','links','firstSeen'];
-          const lines = [header.join(',')];
+          if (!rows.length) { alert("No rows to export."); return; }
+          const header = ["severity","cvss","component","version","purl","licenses","id","dataset","links","firstSeen"];
+          const lines = [header.join(",")];
           for (const r of rows) {
             const csv = [
-              r.severity ?? '', r.cvss ?? '', r.component ?? '', r.version ?? '', r.purl ?? '',
-              (r.licenses||[]).join('|'), r.id ?? '', r.dataset ?? '', (r.urls||[]).join('|'), r.firstSeen ?? ''
-            ].map(x => '"'+String(x).replace(/"/g,'""')+'"').join(',');
+              r.severity ?? "", r.cvss ?? "", r.component ?? "", r.version ?? "",
+              r.purl ?? "", (r.licenses||[]).join("|"), r.id ?? "", r.dataset ?? "",
+              (r.urls||[]).join("|"), r.firstSeen ?? ""
+            ].map(x => `"${String(x).replace(/"/g,'""')}"`).join(",");
             lines.push(csv);
           }
-          const blob = new Blob([lines.join('\n')], {type: 'text/csv;charset=utf-8;'});
+          const blob = new Blob([lines.join("\n")], {type: "text/csv;charset=utf-8;"});
           const url = URL.createObjectURL(blob);
-          const a = document.createElement('a'); a.href = url; a.download = 'sbom-filtered.csv'; a.click(); URL.revokeObjectURL(url);
+          const a = document.createElement("a"); a.href = url; a.download = "sbom-filtered.csv"; a.click();
+          URL.revokeObjectURL(url);
         },
 
-        // Group-by Components (lazy)
+        // ------- Components (group-by) -------
         buildGrouped(){
           const byKey = new Map();
           for (const r of this.filtered) {
-            const key = (r.component || 'unknown').toLowerCase();
+            const key = (r.component || "unknown").toLowerCase();
             const g = byKey.get(key) || {
-              key, component: r.component || 'unknown', purlSample: r.purl || '',
+              key, component: r.component || "unknown", purlSample: r.purl || "",
               datasets: new Set(), licenses: new Set(), vulnCount: 0,
-              worstSeverity: 'UNKNOWN', worstSeverityRank: -1, maxCVSS: null
+              worstSeverity: "UNKNOWN", worstSeverityRank: -1, maxCVSS: null
             };
             g.datasets.add(r.dataset);
             (r.licenses||[]).forEach(l => g.licenses.add(l));
             g.vulnCount += 1;
-            if ((r.severityRank ?? -1) > g.worstSeverityRank){ g.worstSeverityRank = r.severityRank ?? -1; g.worstSeverity = (r.severity || 'UNKNOWN').toUpperCase(); }
+            if ((r.severityRank ?? -1) > g.worstSeverityRank){
+              g.worstSeverityRank = r.severityRank ?? -1;
+              g.worstSeverity = (r.severity || "UNKNOWN").toUpperCase();
+            }
             if (r.cvss != null) g.maxCVSS = Math.max(g.maxCVSS ?? -Infinity, r.cvss);
             if (!g.purlSample && r.purl) g.purlSample = r.purl;
             byKey.set(key, g);
           }
           this.grouped = Array.from(byKey.values()).map(g => ({
-            ...g, datasets: Array.from(g.datasets).sort(), licenses: Array.from(g.licenses).sort()
+            ...g,
+            datasets: Array.from(g.datasets).sort(),
+            licenses: Array.from(g.licenses).sort()
           }));
           this.applyGroup();
         },
+
         applyGroup(){
-          const key = this.compSortKey; const dir = this.compSortDir==='desc' ? -1 : 1;
-          this.grouped.sort((a,b)=>{ const A=(a[key]??''); const B=(b[key]??''); if (typeof A==='number' && typeof B==='number') return (A-B)*dir; return String(A).localeCompare(String(B))*dir; });
-          this.compPage = 0; this.groupPaginate();
+          const key = this.compSortKey;
+          const dir = this.compSortDir === "desc" ? -1 : 1;
+          this.grouped.sort((a,b)=>{
+            const A = a[key]; const B = b[key];
+            if (typeof A === "number" && typeof B === "number") return (A-B)*dir;
+            return String(A ?? "").localeCompare(String(B ?? "")) * dir;
+          });
+          this.compPage = 0;
+          this.groupPaginate();
         },
-        groupPaginate(){ this.compPages = Math.max(1, Math.ceil(this.grouped.length / this.compPerPage)); const start = this.compPage * this.compPerPage; this.groupedPaged = this.grouped.slice(start, start + this.compPerPage); },
+
+        groupPaginate(){
+          this.compPages = Math.max(1, Math.ceil(this.grouped.length / this.compPerPage));
+          const start = this.compPage * this.compPerPage;
+          this.groupedPaged = this.grouped.slice(start, start + this.compPerPage);
+        },
         compNext(){ if (this.compPage+1 < this.compPages){ this.compPage++; this.groupPaginate(); } },
         compPrev(){ if (this.compPage>0){ this.compPage--; this.groupPaginate(); } },
 
-        // Compare datasets
+        // ------- Compare -------
         buildCompare(){
           this.cmpReady = false;
           if (!this.cmpA || !this.cmpB || this.cmpA===this.cmpB) return;
           const A = this.items.filter(x => x.dataset===this.cmpA);
           const B = this.items.filter(x => x.dataset===this.cmpB);
-          const sevCount = list => list.reduce((acc,r)=>{const s=(r.severity||'UNKNOWN').toUpperCase(); acc[s]=(acc[s]||0)+1; return acc;},{});
+          const sevCount = list => list.reduce((acc,r)=>{const s=(r.severity||"UNKNOWN").toUpperCase(); acc[s]=(acc[s]||0)+1; return acc;},{});
           const ids = list => new Set(list.map(r => r.id || `${r.component}@${r.version||''}`));
           const setA = ids(A), setB = ids(B);
           const onlyA = [...setA].filter(x => !setB.has(x)).slice(0,500);
           const onlyB = [...setB].filter(x => !setA.has(x)).slice(0,500);
           const sevA = sevCount(A), sevB = sevCount(B);
-          const deltaSev = {}; for (const s of ['CRITICAL','HIGH','MEDIUM','LOW','INFO','UNKNOWN']) deltaSev[s] = (sevB[s]||0)-(sevA[s]||0);
+          const deltaSev = {};
+          for (const s of ['CRITICAL','HIGH','MEDIUM','LOW','INFO','UNKNOWN']) deltaSev[s] = (sevB[s]||0)-(sevA[s]||0);
           this.cmpStats = { A: { total: A.length, sev: sevA }, B: { total: B.length, sev: sevB }, delta: { total: B.length - A.length, sev: deltaSev }, onlyA, onlyB };
-          this.cmpReady = true; this.persistToHash();
+          this.cmpReady = true;
         },
 
-        // Top CVE helper
-        applyTopCVE(id){ this.q = id || ''; this.applyFilters(true); },
+        // ------- Top CVE helper -------
+        applyTopCVE(id){ this.q = id || ""; this.applyFilters(true); },
 
-        // Charts
+        // ------- Charts -------
         drawDonut(){
-          const ctx = document.getElementById('donut'); if (!ctx) return;
-          const sev = this.overall.severityCounts || {}; const labels = ['CRITICAL','HIGH','MEDIUM','LOW','INFO']; const data = labels.map(k => sev[k] || 0);
+          const ctx = document.getElementById("donut");
+          if (!ctx) return;
+          const sev = this.overall.severityCounts || {};
+          const labels = ['CRITICAL','HIGH','MEDIUM','LOW','INFO'];
+          const data = labels.map(k => sev[k] || 0);
           if (this.donutChart) this.donutChart.destroy();
-          this.donutChart = new Chart(ctx, { type: 'doughnut', data: { labels, datasets: [{ data }] }, options: { plugins: { legend: { position: 'bottom' } }, cutout: '65%' } });
+          this.donutChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: { labels, datasets: [{ data }] },
+            options: { plugins: { legend: { position: 'bottom' } }, cutout: '65%' }
+          });
         },
+
         drawSparklines(){
           const entries = (this.history.entries || []).slice(-24);
           const labels = entries.map(e => new Date(e.generatedAt).toLocaleDateString());
           const total = entries.map(e => e.overall?.total || 0);
           this.makeSpark('sparkTotal', labels, total);
-          for (const k of ['CRITICAL','HIGH','MEDIUM','LOW']) { const arr = entries.map(e => e.overall?.severityCounts?.[k] || 0); this.makeSpark(`spark-${k}`, labels, arr); }
+          for (const k of ['CRITICAL','HIGH','MEDIUM','LOW']) {
+            const arr = entries.map(e => e.overall?.severityCounts?.[k] || 0);
+            this.makeSpark(`spark-${k}`, labels, arr);
+          }
         },
+
         makeSpark(id, labels, data){
-          const el = document.getElementById(id); if (!el) return; if (this.sparks[id]) this.sparks[id].destroy();
-          this.sparks[id] = new Chart(el, { type: 'line', data: { labels, datasets: [{ data, tension: 0.3, pointRadius: 0, borderWidth: 2 }] }, options: { responsive: true, plugins: { legend: { display: false }, tooltip: { enabled: true } }, scales: { x: { display: false }, y: { display: false } }, elements: { line: { fill: false } } } });
+          const el = document.getElementById(id);
+          if (!el) return;
+          if (this.sparks[id]) this.sparks[id].destroy();
+          this.sparks[id] = new Chart(el, {
+            type: 'line',
+            data: { labels, datasets: [{ data, tension: 0.3, pointRadius: 0, borderWidth: 2 }] },
+            options: {
+              responsive: true,
+              plugins: { legend: { display: false }, tooltip: { enabled: true } },
+              scales: { x: { display: false }, y: { display: false } },
+              elements: { line: { fill: false } }
+            }
+          });
         },
 
-        // save/load view (localStorage)
-        saveView(){ const s = { q:this.q, dataset:this.dataset, severity:this.severity, fix:this.fix, cvssMin:this.cvssMin, onlyDirect:this.onlyDirect, sortKey:this.sortKey, sortDir:this.sortDir, tab:this.tab, perPage:this.perPage }; localStorage.setItem('sbom_view', JSON.stringify(s)); alert('View saved.'); },
-        loadView(){ const s = JSON.parse(localStorage.getItem('sbom_view') || 'null'); if (!s) { alert('No saved view.'); return; } Object.assign(this, s); this.applyFilters(true); },
-        resetFilters(){ this.q=''; this.dataset=''; this.severity=''; this.fix=''; this.cvssMin=0; this.onlyDirect=false; this.applyFilters(true); },
-
-        // state in URL
-        persistToHash(){ const h = new URLSearchParams({ tab: this.tab, q: this.q || '', ds: this.dataset || '', sev: this.severity || '', fix: this.fix || '', cvss: String(this.cvssMin || 0), dir: this.sortDir, key: this.sortKey, dirc: this.onlyDirect ? '1' : '0', p: String(this.page), per: String(this.perPage), cdir: this.compSortDir, ckey: this.compSortKey, cp: String(this.compPage), cmpA: this.cmpA || '', cmpB: this.cmpB || '' }).toString(); location.hash = h; },
-        restoreFromHash(){ const s = new URLSearchParams(location.hash.replace(/^#/, '')); this.tab = s.get('tab') || this.tab; this.q = s.get('q') || this.q; this.dataset = s.get('ds') || this.dataset; this.severity = s.get('sev') || this.severity; this.fix = s.get('fix') || this.fix; this.cvssMin = Number(s.get('cvss') || this.cvssMin || 0); this.sortDir = s.get('dir') || this.sortDir; this.sortKey = s.get('key') || this.sortKey; this.onlyDirect = s.get('dirc')==='1' ? true : this.onlyDirect; this.page = Number(s.get('p') || this.page || 0); this.perPage = Number(s.get('per') || this.perPage || 50); this.compSortDir = s.get('cdir') || this.compSortDir; this.compSortKey = s.get('ckey') || this.compSortKey; this.compPage = Number(s.get('cp') || this.compPage || 0); this.cmpA = s.get('cmpA') || this.cmpA; this.cmpB = s.get('cmpB') || this.cmpB; if (this.cmpA && this.cmpB && this.cmpA !== this.cmpB) this.buildCompare(); }
+        // ------- saved views & URL state -------
+        saveView(){
+          const s = { q:this.q, dataset:this.dataset, severity:this.severity, fix:this.fix, cvssMin:this.cvssMin, onlyDirect:this.onlyDirect, sortKey:this.sortKey, sortDir:this.sortDir, tab:this.tab };
+          localStorage.setItem("sbom_view", JSON.stringify(s));
+          alert("View saved.");
+        },
+        loadView(){
+          const s = JSON.parse(localStorage.getItem("sbom_view") || "null");
+          if (!s) { alert("No saved view."); return; }
+          Object.assign(this, s);
+          this.applyFilters(true);
+        },
+        persistToHash(){
+          const h = new URLSearchParams({
+            tab: this.tab, q: this.q || "", ds: this.dataset || "", sev: this.severity || "", fix: this.fix || "",
+            cvss: String(this.cvssMin || 0), dir: this.sortDir, key: this.sortKey,
+            dirc: this.onlyDirect ? "1" : "0", // (kept for back-compat)
+          }).toString();
+          location.hash = h;
+        },
+        restoreFromHash(){
+          const s = new URLSearchParams(location.hash.replace(/^#/, ""));
+          this.tab = s.get("tab") || this.tab;
+          this.q = s.get("q") || this.q;
+          this.dataset = s.get("ds") || this.dataset;
+          this.severity = s.get("sev") || this.severity;
+          this.fix = s.get("fix") || this.fix;
+          this.cvssMin = Number(s.get("cvss") || this.cvssMin || 0);
+          this.sortDir = s.get("dir") || this.sortDir;
+          this.sortKey = s.get("key") || this.sortKey;
+          this.onlyDirect = s.get("dirc")==="1" ? true : this.onlyDirect;
+        },
       }
+    }
+
+    // tiny debounce helper
+    function debounce(fn, ms){
+      let t; return function(){ clearTimeout(t); const ctx=this, args=arguments; t=setTimeout(()=>fn.apply(ctx,args), ms); }
     }
   </script>
 </body>
