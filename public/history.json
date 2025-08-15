@@ -239,6 +239,54 @@
           "UNKNOWN": 0
         }
       }
+    },
+    {
+      "generatedAt": "2025-08-15T22:10:51.176Z",
+      "overall": {
+        "total": 1177,
+        "severityCounts": {
+          "CRITICAL": 46,
+          "HIGH": 632,
+          "MEDIUM": 496,
+          "LOW": 3,
+          "INFO": 0,
+          "UNKNOWN": 0
+        }
+      },
+      "datasets": {
+        "stable": {
+          "CRITICAL": 16,
+          "HIGH": 240,
+          "MEDIUM": 165,
+          "LOW": 1,
+          "INFO": 0,
+          "UNKNOWN": 0
+        },
+        "frontend-amd64": {
+          "CRITICAL": 0,
+          "HIGH": 2,
+          "MEDIUM": 0,
+          "LOW": 0,
+          "INFO": 0,
+          "UNKNOWN": 0
+        },
+        "backend-amd64": {
+          "CRITICAL": 15,
+          "HIGH": 188,
+          "MEDIUM": 164,
+          "LOW": 1,
+          "INFO": 0,
+          "UNKNOWN": 0
+        },
+        "arm64": {
+          "CRITICAL": 15,
+          "HIGH": 202,
+          "MEDIUM": 167,
+          "LOW": 1,
+          "INFO": 0,
+          "UNKNOWN": 0
+        }
+      }
     }
   ]
 }
