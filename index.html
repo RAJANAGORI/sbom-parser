@@ -1,215 +1,707 @@
+<!-- <!doctype html>
+<html lang="en" x-data="app()" x-init="init()" class="h-full bg-gray-50">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SBOM Explorer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <style>
+    .card{ @apply bg-white border rounded-2xl shadow-sm p-4; }
+    .chip{ @apply text-xs px-2 py-0.5 rounded; }
+    [x-cloak]{ display:none !important; }
+    .muted{ @apply text-xs text-gray-500; }
+  </style>
+</head>
+<body class="h-full">
+  <!-- Top bar -->
+  <header class="sticky top-0 z-40 bg-white/90 backdrop-blur border-b">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3">
+      <h1 class="text-xl font-semibold">SBOM Explorer</h1>
+      <span class="text-xs text-gray-500" x-text="metaText"></span>
+      <div class="ml-auto flex gap-2">
+        <button class="px-3 py-2 border rounded-xl" @click="exportCSV()">Export CSV</button>
+        <button class="px-3 py-2 border rounded-xl" @click="saveView()">Save View</button>
+        <button class="px-3 py-2 border rounded-xl" @click="loadView()">Load View</button>
+      </div>
+    </div>
+    <!-- Filters -->
+    <div class="max-w-7xl mx-auto px-4 pb-3 flex items-center gap-2 flex-wrap">
+      <input x-model="q" @input="applyFilters(true)" placeholder="Search (component, purl, vuln id, license)"
+        class="w-72 px-3 py-2 border rounded-xl focus:outline-none focus:ring" />
+      <select x-model="dataset" @change="applyFilters(true)" class="px-3 py-2 border rounded-xl">
+        <option value="">All datasets</option>
+        <template x-for="d in datasets" :key="d.id">
+          <option :value="d.id" x-text="`${d.id} (${d.vulnerabilities})`"></option>
+        </template>
+      </select>
+      <select x-model="severity" @change="applyFilters(true)" class="px-3 py-2 border rounded-xl">
+        <option value="">All severities</option>
+        <template x-for="s in ['CRITICAL','HIGH','MEDIUM','LOW','INFO','UNKNOWN']" :key="s">
+          <option :value="s" x-text="s"></option>
+        </template>
+      </select>
+      <select x-model="fix" @change="applyFilters(true)" class="px-3 py-2 border rounded-xl">
+        <option value="">Fix status</option>
+        <option value="has">Has fix</option>
+        <option value="none">No fix</option>
+      </select>
+      <label class="flex items-center gap-2 px-3 py-2 border rounded-xl">
+        <span class="text-sm">CVSS ≥</span>
+        <input type="number" min="0" max="10" step="0.1" x-model.number="cvssMin" @input="applyFilters(true)" class="w-20 outline-none" />
+      </label>
+      <label class="flex items-center gap-2 px-3 py-2 border rounded-xl">
+        <input type="checkbox" x-model="onlyDirect" @change="applyFilters(true)">
+        <span class="text-sm">Only direct</span>
+      </label>
+      <div class="ml-auto flex items-center gap-2 text-sm">
+        <label>Sort:</label>
+        <select x-model="sortKey" @change="applyFilters()" class="px-2 py-1 border rounded-lg">
+          <option value="severityRank">Severity</option>
+          <option value="cvss">CVSS</option>
+          <option value="component">Component</option>
+          <option value="dataset">Dataset</option>
+        </select>
+        <button class="px-2 py-1 border rounded-lg" @click="sortDir = sortDir==='desc'?'asc':'desc'; applyFilters()"
+                x-text="sortDir==='desc' ? '↓' : '↑'"></button>
+      </div>
+    </div>
+  </header>
 
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>SBOM Explorer</title>
-    <meta name="description" content="Beautiful, fast SBOM viewer for CycloneDX JSON with history and vulnerability context." />
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            fontFamily: { sans: ['Inter', 'ui-sans-serif', 'system-ui'] },
-            colors: {
-              ink: '#0f172a',
-              stone: '#334155',
-              brand: { 50:'#eef2ff', 400:'#818cf8', 500:'#6366f1', 600:'#4f46e5', 700:'#4338ca' },
-              ok:'#10b981', warn:'#f59e0b', bad:'#ef4444'
-            },
-            boxShadow: { 'soft': '0 10px 30px -12px rgba(2,6,23,.15)' }
-          }
-        }
-      }
-    </script>
-    <style>
-      html,body{height:100%}
-      ::selection{background:#c7d2fe;color:#111827}
-      .chip{ @apply inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200;}
-      .kpi{ @apply rounded-2xl p-4 bg-white shadow-soft border border-slate-100;}
-      .card{ @apply rounded-2xl bg-white shadow-soft border border-slate-100;}
-      .btn{ @apply inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold border border-slate-200 hover:bg-slate-50;}
-      .tab{ @apply cursor-pointer px-3 py-2 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100;}
-      .tab-active{ @apply bg-ink text-white hover:bg-ink hover:text-white;}
-      .mono{ font-variant-ligatures:none; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;}
-      .pill{ @apply text-xs px-2.5 py-1 rounded-full font-semibold;}
-      .pill-ok{ @apply bg-green-50 text-green-700 border border-green-200;}
-      .pill-warn{ @apply bg-amber-50 text-amber-700 border border-amber-200;}
-      .pill-bad{ @apply bg-red-50 text-red-700 border border-red-200;}
-      .tbl th{ @apply sticky top-0 z-10 bg-slate-50/90 backdrop-blur text-left text-xs font-semibold text-slate-600 uppercase tracking-wide border-b px-3 py-2;}
-      .tbl td{ @apply align-top whitespace-pre-wrap px-3 py-2 border-b; }
-      .tbl tr:hover td{ @apply bg-slate-50;}
-      .srch{ @apply w-full rounded-xl border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-400;}
-      .fade-in{ animation:fade .3s ease-in-out;}
-      @keyframes fade{ from{opacity:0; transform: translateY(4px)} to{opacity:1; transform: none} }
-      .minibar{height:6px}
-    </style>
-  </head>
-  <body class="bg-slate-50 text-slate-900">
-    <header class="sticky top-0 z-40 bg-white/80 backdrop-blur border-b border-slate-100">
-      <div class="mx-auto max-w-7xl px-4 py-4 flex items-center justify-between">
-        <div class="flex items-center gap-3">
-          <div class="h-9 w-9 rounded-xl bg-brand-600 grid place-items-center text-white font-extrabold">S</div>
-          <div>
-            <h1 class="text-xl font-extrabold leading-tight">SBOM Explorer</h1>
-            <p id="subtitle" class="text-xs text-slate-500">Loading index…</p>
-          </div>
+  <main class="max-w-7xl mx-auto px-4 py-6">
+    <!-- Findings summary: totals + donut + sparklines + new metrics -->
+    <section class="grid grid-cols-1 lg:grid-cols-12 gap-4 mb-6">
+      <!-- Totals + sparks -->
+      <div class="lg:col-span-7 grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div class="card col-span-2">
+          <div class="text-xs text-gray-500">Total Vulnerabilities</div>
+          <div class="text-2xl font-semibold" x-text="overall.total"></div>
+          <div class="text-xs mt-1" x-html="deltaBadge(overall.delta)"></div>
+          <canvas id="sparkTotal" height="40" class="mt-2"></canvas>
         </div>
-        <div class="flex items-center gap-2">
-          <a class="btn" href="public/sbom-index.json" target="_blank" rel="noreferrer">sbom-index.json</a>
-          <a class="btn" href="public/history.json" target="_blank" rel="noreferrer">history.json</a>
-          <a class="btn" href="public/tracker.json" target="_blank" rel="noreferrer">tracker.json</a>
-          <a class="btn" href="sboms/manifest.json" target="_blank" rel="noreferrer">manifest.json</a>
-          <a id="downloadBtn" class="btn hidden" rel="noreferrer">Download view</a>
+        <template x-for="sev in ['CRITICAL','HIGH','MEDIUM','LOW']" :key="sev">
+          <div class="card">
+            <div class="text-xs text-gray-500" x-text="sev"></div>
+            <div class="text-xl font-semibold" x-text="overall.severityCounts[sev] ?? 0"></div>
+            <div class="text-xs mt-1" x-html="deltaBadge(overall.severityDelta[sev])"></div>
+            <canvas :id="`spark-${sev}`" height="40" class="mt-2"></canvas>
+          </div>
+        </template>
+      </div>
+      <!-- Donut -->
+      <div class="card lg:col-span-5">
+        <div class="text-sm font-medium mb-2">Severity distribution</div>
+        <canvas id="donut" height="160"></canvas>
+      </div>
+    </section>
+
+    <!-- New metric cards -->
+    <section class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <div class="card">
+        <div class="text-xs text-gray-500">Fix availability rate</div>
+        <div class="text-2xl font-semibold" x-text="(metrics.fixAvailabilityRate||0) + '%'"></div>
+        <div class="muted mt-1">% of current vulns with known fixes</div>
+      </div>
+      <div class="card">
+        <div class="text-xs text-gray-500">Median time to fix</div>
+        <div class="text-2xl font-semibold" x-text="metrics.ttfMedianDays === null ? '–' : (metrics.ttfMedianDays + ' days')"></div>
+        <div class="muted mt-1">Measured across vulns that disappeared since first seen</div>
+      </div>
+      <div class="card">
+        <div class="text-xs text-gray-500">Median open age</div>
+        <div class="text-2xl font-semibold" x-text="metrics.openAgeMedianDays === null ? '–' : (metrics.openAgeMedianDays + ' days')"></div>
+        <div class="muted mt-1">How long current vulns have been present</div>
+      </div>
+    </section>
+
+    <!-- Top CVEs + Oldest Open -->
+    <section class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+      <div class="card">
+        <div class="flex items-center justify-between mb-2">
+          <div class="text-sm font-medium">Top CVEs (by severity & count)</div>
+          <button class="text-xs underline" @click="applyTopCVE()">Clear filter</button>
+        </div>
+        <template x-if="!(metrics.topCVEs||[]).length">
+          <div class="muted">No CVE IDs found in current data.</div>
+        </template>
+        <ul class="text-sm space-y-2 max-h-72 overflow-auto">
+          <template x-for="cve in (metrics.topCVEs || [])" :key="cve.id">
+            <li class="flex items-start justify-between gap-3">
+              <div>
+                <button class="text-blue-600 underline font-medium" @click="applyTopCVE(cve.id)" x-text="cve.id"></button>
+                <div class="muted">
+                  <span x-text="`Count: ${cve.count}`"></span>
+                  · <span x-text="`Max CVSS: ${cve.maxCVSS ?? '-'}`"></span>
+                  · <span x-text="`Datasets: ${cve.datasets.join(', ')}`"></span>
+                </div>
+              </div>
+              <span class="chip bg-gray-100">sev rank: <span x-text="cve.worstSeverityRank"></span></span>
+            </li>
+          </template>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="text-sm font-medium mb-2">Oldest open vulnerabilities</div>
+        <template x-if="!(metrics.oldestOpen||[]).length">
+          <div class="muted">No data yet.</div>
+        </template>
+        <ul class="text-sm space-y-2 max-h-72 overflow-auto">
+          <template x-for="v in (metrics.oldestOpen || [])" :key="v.key">
+            <li>
+              <div class="font-medium">
+                <span x-text="v.meta?.id || '—'"></span>
+                <span class="muted">in</span>
+                <span class="chip bg-gray-100" x-text="v.meta?.dataset"></span>
+              </div>
+              <div class="muted">
+                <span x-text="`${v.days} days open`"></span>
+                · <span x-text="v.meta?.component"></span>
+              </div>
+              <button class="text-xs text-blue-600 underline mt-1" @click="q=(v.meta?.id||''); applyFilters(true)">Filter by ID</button>
+            </li>
+          </template>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Tabs -->
+    <div class="mb-3 border-b">
+      <nav class="-mb-px flex gap-2">
+        <button :class="tab==='vulns' ? activeTab : baseTab" @click="tab='vulns'">Vulnerabilities</button>
+        <button :class="tab==='components' ? activeTab : baseTab" @click="tab='components'">Components</button>
+        <button :class="tab==='compare' ? activeTab : baseTab" @click="tab='compare'">Compare datasets</button>
+      </nav>
+    </div>
+
+    <!-- Vulnerabilities -->
+    <section x-show="tab==='vulns'" x-cloak>
+      <div class="mb-2 text-sm text-gray-600">
+        <span x-text="`Showing ${filtered.length} of ${items.length} vulnerabilities`"></span>
+      </div>
+      <div class="overflow-x-auto bg-white border rounded-2xl shadow-sm">
+        <table class="min-w-full text-sm">
+          <thead class="bg-gray-50">
+            <tr class="text-left">
+              <th class="px-4 py-3">Severity</th>
+              <th class="px-4 py-3">CVSS</th>
+              <th class="px-4 py-3">Component</th>
+              <th class="px-4 py-3">Version</th>
+              <th class="px-4 py-3">License</th>
+              <th class="px-4 py-3">Vuln ID</th>
+              <th class="px-4 py-3">Dataset</th>
+              <th class="px-4 py-3">Links</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="row in paged" :key="row.dataset + (row.id || row.component || Math.random())">
+              <tr class="border-t hover:bg-gray-50">
+                <td class="px-4 py-2">
+                  <span class="px-2 py-1 rounded-lg text-xs font-semibold"
+                    :class="badge(row.severity)" x-text="row.severity"></span>
+                </td>
+                <td class="px-4 py-2" x-text="row.cvss ?? '-'"></td>
+                <td class="px-4 py-2">
+                  <div class="font-medium" x-text="row.component || '-'"></div>
+                  <div class="text-xs text-gray-500 truncate max-w-[28rem]" x-text="row.purl"></div>
+                </td>
+                <td class="px-4 py-2" x-text="row.version || '-'"></td>
+                <td class="px-4 py-2">
+                  <template x-for="l in (row.licenses || [])"><span class="mr-1 px-1.5 py-0.5 bg-gray-100 rounded"
+                    x-text="l"></span></template>
+                </td>
+                <td class="px-4 py-2">
+                  <div x-text="row.id || '-'"></div>
+                  <div class="muted" x-show="row.firstSeen">first seen: <span x-text="new Date(row.firstSeen).toLocaleDateString()"></span></div>
+                </td>
+                <td class="px-4 py-2">
+                  <span class="text-xs px-2 py-1 bg-gray-100 rounded" x-text="row.dataset"></span>
+                  <template x-if="row.direct"><span class="ml-1 text-[10px] px-1 py-0.5 bg-emerald-100 text-emerald-700 rounded">direct</span></template>
+                </td>
+                <td class="px-4 py-2">
+                  <template x-for="(u, i) in (row.urls || [])">
+                    <a class="text-blue-600 underline mr-2" :href="u" target="_blank" x-text="`ref${i+1}`"></a>
+                  </template>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="mt-4 flex items-center justify-between">
+        <div class="text-sm text-gray-600">
+          Page <span x-text="page+1"></span> / <span x-text="pages"></span>
+        </div>
+        <div class="flex gap-2">
+          <button class="px-3 py-1 border rounded-lg" :disabled="page===0" @click="prev()">Prev</button>
+          <button class="px-3 py-1 border rounded-lg" :disabled="page+1>=pages" @click="next()">Next</button>
         </div>
       </div>
-    </header>
+    </section>
 
-    <main class="mx-auto max-w-7xl px-4 py-6 grid gap-6">
-      <!-- KPI STRIP -->
-      <section id="kpis" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4"></section>
-
-      <!-- Tabs -->
-      <nav class="flex gap-2">
-        <button data-tab="overview" class="tab tab-active">Overview</button>
-        <button data-tab="components" class="tab">Components</button>
-        <button data-tab="vulns" class="tab">Vulnerabilities</button>
-        <button data-tab="history" class="tab">History</button>
-        <button data-tab="files" class="tab">Files</button>
-      </nav>
-
-      <!-- Overview -->
-      <section id="tab-overview" class="card p-5 fade-in">
-        <div class="grid gap-6 lg:grid-cols-3">
-          <div class="lg:col-span-2 grid gap-4">
-            <div class="card p-4">
-              <h2 class="text-lg font-bold mb-2">Current SBOMs</h2>
-              <div id="sbomList" class="grid gap-3"></div>
-            </div>
-            <div class="card p-4">
-              <h2 class="text-lg font-bold mb-2">Metadata & Scope</h2>
-              <dl id="metaList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-2 gap-x-6"></dl>
-            </div>
-          </div>
-          <aside class="card p-4">
-            <h3 class="text-lg font-bold mb-3">Quick filters</h3>
-            <div class="grid gap-3">
-              <input id="quickSearch" class="srch" type="search" placeholder="Search name, purl, license… (press ⏎)" />
-              <div class="flex flex-wrap gap-2" id="licenseCloud"></div>
-              <div class="flex flex-wrap gap-2" id="vendorCloud"></div>
-            </div>
-          </aside>
+    <!-- Components -->
+    <section x-show="tab==='components'" x-cloak>
+      <div class="mb-2 flex items-center justify-between">
+        <div class="text-sm text-gray-600">
+          <span x-text="`Showing ${grouped.length} components`"></span>
         </div>
-
-        <!-- Insights grid -->
-        <div class="mt-6 grid gap-6 lg:grid-cols-5">
-          <div class="card p-4 lg:col-span-2">
-            <h3 class="text-sm font-semibold text-slate-600 mb-2">Components by SBOM</h3>
-            <canvas id="chartBySbom" height="120"></canvas>
-          </div>
-          <div class="card p-4 lg:col-span-1">
-            <h3 class="text-sm font-semibold text-slate-600 mb-2">Licenses</h3>
-            <canvas id="chartLicenses" height="120"></canvas>
-          </div>
-          <div class="card p-4 lg:col-span-1">
-            <h3 class="text-sm font-semibold text-slate-600 mb-2">Top vendors</h3>
-            <canvas id="chartVendors" height="120"></canvas>
-          </div>
-          <div class="card p-4 lg:col-span-1">
-            <h3 class="text-sm font-semibold text-slate-600 mb-2">Ecosystems</h3>
-            <canvas id="chartEco" height="120"></canvas>
-          </div>
-          <div class="card p-4 lg:col-span-2">
-            <h3 class="text-sm font-semibold text-slate-600 mb-2">Vulnerability severities</h3>
-            <canvas id="chartSev" height="120"></canvas>
-          </div>
-          <div class="card p-4 lg:col-span-3">
-            <h3 class="text-sm font-semibold text-slate-600 mb-2">Component scopes</h3>
-            <canvas id="chartScopes" height="120"></canvas>
-          </div>
+        <div class="flex items-center gap-2 text-sm">
+          <label>Sort:</label>
+          <select x-model="compSortKey" @change="applyGroup" class="px-2 py-1 border rounded-lg">
+            <option value="vulnCount">Vuln Count</option>
+            <option value="worstSeverityRank">Worst Severity</option>
+            <option value="maxCVSS">Max CVSS</option>
+            <option value="component">Component</option>
+          </select>
+          <button class="px-2 py-1 border rounded-lg" @click="compSortDir = compSortDir==='desc'?'asc':'desc'; applyGroup()"
+                  x-text="compSortDir==='desc' ? '↓' : '↑'"></button>
         </div>
-      </section>
+      </div>
 
-      <!-- Components -->
-      <section id="tab-components" class="card p-0 hidden fade-in">
-        <div class="p-4 flex items-center justify-between gap-3 flex-wrap">
-          <div class="flex items-center gap-2">
-            <input id="compSearch" class="srch" type="search" placeholder="Filter components…" />
-            <span id="compCount" class="chip">0</span>
-          </div>
-          <div class="flex items-center gap-2 text-sm">
-            <label class="flex items-center gap-2"><input id="toggleDev" type="checkbox"/> <span>Include dev/test</span></label>
-            <label class="flex items-center gap-2"><input id="toggleNoLicense" type="checkbox"/> <span>Only with license</span></label>
-          </div>
-        </div>
-        <div class="overflow-auto">
-          <table class="tbl w-full">
-            <thead>
-              <tr>
-                <th class="w-[20%]">Name</th>
-                <th>Version</th>
-                <th class="w-[18%]">PURL</th>
-                <th class="w-[14%]">License</th>
-                <th class="w-[14%]">Supplier</th>
-                <th class="w-[10%]">Scope</th>
+      <div class="overflow-x-auto bg-white border rounded-2xl shadow-sm">
+        <table class="min-w-full text-sm">
+          <thead class="bg-gray-50">
+            <tr class="text-left">
+              <th class="px-4 py-3">Component</th>
+              <th class="px-4 py-3">Worst Severity</th>
+              <th class="px-4 py-3">Max CVSS</th>
+              <th class="px-4 py-3">Vuln Count</th>
+              <th class="px-4 py-3">Datasets</th>
+              <th class="px-4 py-3">Licenses</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="g in groupedPaged" :key="g.key">
+              <tr class="border-t hover:bg-gray-50">
+                <td class="px-4 py-2">
+                  <div class="font-medium" x-text="g.component || '-'"></div>
+                  <div class="text-xs text-gray-500 truncate max-w-[28rem]" x-text="g.purlSample"></div>
+                </td>
+                <td class="px-4 py-2">
+                  <span class="px-2 py-1 rounded-lg text-xs font-semibold" :class="badge(g.worstSeverity)" x-text="g.worstSeverity"></span>
+                </td>
+                <td class="px-4 py-2" x-text="g.maxCVSS ?? '-'"></td>
+                <td class="px-4 py-2" x-text="g.vulnCount"></td>
+                <td class="px-4 py-2">
+                  <template x-for="d in g.datasets"><span class="mr-1 chip bg-gray-100" x-text="d"></span></template>
+                </td>
+                <td class="px-4 py-2">
+                  <template x-for="l in g.licenses"><span class="mr-1 chip bg-gray-100" x-text="l"></span></template>
+                </td>
               </tr>
-            </thead>
-            <tbody id="componentsBody"></tbody>
-          </table>
-        </div>
-      </section>
+            </template>
+          </tbody>
+        </table>
+      </div>
 
-      <!-- Vulnerabilities -->
-      <section id="tab-vulns" class="card p-0 hidden fade-in">
-        <div class="p-4 flex items-center justify-between gap-3 flex-wrap">
-          <input id="vulnSearch" class="srch" type="search" placeholder="Filter vulnerabilities…" />
-          <span id="vulnCount" class="chip">0</span>
+      <div class="mt-4 flex items-center justify-between">
+        <div class="text-sm text-gray-600">
+          Page <span x-text="compPage+1"></span> / <span x-text="compPages"></span>
         </div>
-        <div class="overflow-auto">
-          <table class="tbl w-full">
-            <thead>
-              <tr>
-                <th class="w-[18%]">ID</th>
-                <th class="w-[12%]">Severity</th>
-                <th class="w-[16%]">Affects</th>
-                <th class="w-[14%]">Version Range</th>
-                <th class="w-[40%]">Description</th>
-              </tr>
-            </thead>
-            <tbody id="vulnsBody"></tbody>
-          </table>
+        <div class="flex gap-2">
+          <button class="px-3 py-1 border rounded-lg" :disabled="compPage===0" @click="compPrev()">Prev</button>
+          <button class="px-3 py-1 border rounded-lg" :disabled="compPage+1>=compPages" @click="compNext()">Next</button>
         </div>
-      </section>
+      </div>
+    </section>
 
-      <!-- History -->
-      <section id="tab-history" class="card p-4 hidden fade-in">
-        <div id="history" class="grid gap-4"></div>
-      </section>
+    <!-- Compare datasets -->
+    <section x-show="tab==='compare'" x-cloak>
+      <div class="card mb-4 flex flex-wrap items-center gap-3">
+        <div class="text-sm">Compare</div>
+        <select x-model="cmpA" @change="buildCompare" class="px-3 py-2 border rounded-xl">
+          <option value="">Pick Dataset A</option>
+          <template x-for="d in datasets" :key="d.id"><option :value="d.id" x-text="d.id"></option></template>
+        </select>
+        <span class="text-sm">vs</span>
+        <select x-model="cmpB" @change="buildCompare" class="px-3 py-2 border rounded-xl">
+          <option value="">Pick Dataset B</option>
+          <template x-for="d in datasets" :key="d.id"><option :value="d.id" x-text="d.id"></option></template>
+        </select>
+      </div>
 
-      <!-- Files -->
-      <section id="tab-files" class="card p-4 hidden fade-in">
-        <div class="grid md:grid-cols-2 gap-6">
-          <div>
-            <h3 class="text-lg font-bold mb-2">public/</h3>
-            <div id="publicFiles" class="grid gap-2"></div>
+      <template x-if="cmpReady">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div class="card">
+            <div class="font-medium mb-2" x-text="cmpA"></div>
+            <div class="text-sm">Total: <span x-text="cmpStats.A.total"></span></div>
+            <ul class="mt-2 text-sm">
+              <template x-for="s in ['CRITICAL','HIGH','MEDIUM','LOW','INFO']" :key="s">
+                <li><span x-text="s"></span>: <span x-text="cmpStats.A.sev[s] || 0"></span></li>
+              </template>
+            </ul>
           </div>
-          <div>
-            <h3 class="text-lg font-bold mb-2">sboms/</h3>
-            <div id="sbomFiles" class="grid gap-2"></div>
+          <div class="card">
+            <div class="font-medium mb-2" x-text="cmpB"></div>
+            <div class="text-sm">Total: <span x-text="cmpStats.B.total"></span></div>
+            <ul class="mt-2 text-sm">
+              <template x-for="s in ['CRITICAL','HIGH','MEDIUM','LOW','INFO']" :key="s">
+                <li><span x-text="s"></span>: <span x-text="cmpStats.B.sev[s] || 0"></span></li>
+              </template>
+            </ul>
+          </div>
+          <div class="card">
+            <div class="font-medium mb-2">Delta (B − A)</div>
+            <div class="text-sm">Total: <span x-text="cmpStats.delta.total"></span></div>
+            <ul class="mt-2 text-sm">
+              <template x-for="s in ['CRITICAL','HIGH','MEDIUM','LOW','INFO']" :key="s">
+                <li><span x-text="s"></span>: <span :class="cmpStats.delta.sev[s]>0?'text-red-600':(cmpStats.delta.sev[s]<0?'text-emerald-600':'')" x-text="cmpStats.delta.sev[s]"></span></li>
+              </template>
+            </ul>
           </div>
         </div>
-      </section>
-    </main>
+      </template>
 
-    <footer class="mx-auto max-w-7xl px-4 pb-10 text-center text-xs text-slate-500">
-      Built for <a class="underline" href="https://github.com/Sidbhasin13/sbom-parser" target="_blank" rel="noreferrer">sbom-parser</a> — zero backend, just JSON.
-    </footer>
+      <template x-if="cmpReady">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+          <div class="card">
+            <div class="font-medium mb-2">Only in <span x-text="cmpA"></span></div>
+            <ul class="max-h-72 overflow-auto text-sm list-disc pl-5">
+              <template x-for="id in cmpStats.onlyA" :key="id"><li x-text="id"></li></template>
+            </ul>
+          </div>
+          <div class="card">
+            <div class="font-medium mb-2">Only in <span x-text="cmpB"></span></div>
+            <ul class="max-h-72 overflow-auto text-sm list-disc pl-5">
+              <template x-for="id in cmpStats.onlyB" :key="id"><li x-text="id"></li></template>
+            </ul>
+          </div>
+        </div>
+      </template>
+    </section>
+  </main>
 
-    <script src="parse-sbom.js"></script>
-  </body>
+  <script>
+    function app(){
+      return {
+        // data
+        items: [],
+        filtered: [],
+        paged: [],
+        datasets: [],
+        overall: { total: 0, severityCounts: {}, delta: null, severityDelta: {} },
+        history: { entries: [] },
+        metrics: { fixAvailabilityRate:0, ttfMedianDays:null, openAgeMedianDays:null, oldestOpen:[], topCVEs:[] },
+
+        // filters
+        dataset: "",
+        q: "",
+        severity: "",
+        fix: "",
+        cvssMin: 0,
+        onlyDirect: false,
+
+        // sorting/paging (vulns)
+        sortKey: "severityRank",
+        sortDir: "desc",
+        page: 0,
+        perPage: 50,
+        pages: 0,
+
+        // components tab
+        tab: "vulns",
+        grouped: [],
+        groupedPaged: [],
+        compSortKey: "vulnCount",
+        compSortDir: "desc",
+        compPage: 0,
+        compPerPage: 50,
+        compPages: 0,
+
+        // compare
+        cmpA: "",
+        cmpB: "",
+        cmpReady: false,
+        cmpStats: { A:{total:0,sev:{}}, B:{total:0,sev:{}}, delta:{total:0,sev:{}}, onlyA:[], onlyB:[] },
+
+        // charts
+        donutChart: null,
+        sparks: {},
+
+        metaText: "",
+        baseTab: "px-3 py-2 text-sm border-b-2 border-transparent text-gray-500",
+        activeTab: "px-3 py-2 text-sm border-b-2 border-blue-600 text-blue-700",
+
+        async init(){
+          const snap = await fetch("./public/sbom-index.json?_=" + Date.now()).then(r => r.json());
+          this.items = snap.items || [];
+          this.datasets = (snap.datasets || []).sort((a,b)=>a.id.localeCompare(b.id));
+          this.overall = snap.overall || this.overall;
+          this.metrics = snap.metrics || this.metrics;
+          this.metaText = `updated ${new Date(snap.generatedAt).toLocaleString()}`;
+
+          try { this.history = await fetch("./public/history.json?_=" + Date.now()).then(r => r.json()); }
+          catch { this.history = { entries: [] }; }
+
+          this.restoreFromHash();
+          this.applyFilters(true);
+          this.drawDonut();
+          this.drawSparklines();
+        },
+
+        // visuals
+        badge(sev){
+          const s = (sev||"").toUpperCase();
+          const base = "px-2 py-0.5 rounded-lg text-xs font-semibold";
+          if (s==="CRITICAL") return base+" bg-red-600 text-white";
+          if (s==="HIGH") return base+" bg-red-200 text-red-800";
+          if (s==="MEDIUM") return base+" bg-amber-100 text-amber-800";
+          if (s==="LOW") return base+" bg-green-100 text-green-800";
+          return base+" bg-gray-100 text-gray-800";
+        },
+        deltaBadge(d){
+          if (d === null || d === undefined) return '<span class="text-gray-400">–</span>';
+          if (d > 0) return `<span class="text-red-600">▲ +${d}</span>`;
+          if (d < 0) return `<span class="text-emerald-600">▼ ${d}</span>`;
+          return '<span class="text-gray-600">0</span>';
+        },
+
+        // filtering/sorting
+        applyFilters(buildGroup=false){
+          const q = this.q.trim().toLowerCase();
+          const sev = this.severity;
+          const fix = this.fix;
+          const cv = Number(this.cvssMin) || 0;
+          const ds = this.dataset;
+
+          this.filtered = this.items.filter(r => {
+            if (ds && r.dataset !== ds) return false;
+            if (sev && (r.severity||"").toUpperCase() !== sev) return false;
+            if (this.onlyDirect && !r.direct) return false;
+            if (cv && (r.cvss ?? -1) < cv) return false;
+            if (fix === "has" && !(r.fixedVersions || []).length) return false;
+            if (fix === "none" && (r.fixedVersions || []).length) return false;
+            if (q) {
+              const t = [r.component, r.purl, r.id, (r.licenses||[]).join(" "), (r.dataset||"")].join(" ").toLowerCase();
+              if (!t.includes(q)) return false;
+            }
+            return true;
+          });
+
+          const key = this.sortKey;
+          const dir = this.sortDir === "desc" ? -1 : 1;
+          this.filtered.sort((a,b)=>{
+            const A = (a[key] ?? "");
+            const B = (b[key] ?? "");
+            if (typeof A === "number" && typeof B === "number") return (A-B)*dir;
+            return String(A).localeCompare(String(B)) * dir;
+          });
+
+          this.page = 0;
+          this.paginate();
+          this.persistToHash();
+
+          if (buildGroup) this.buildGrouped();
+          else this.applyGroup();
+        },
+        paginate(){
+          this.pages = Math.max(1, Math.ceil(this.filtered.length / this.perPage));
+          const start = this.page * this.perPage;
+          this.paged = this.filtered.slice(start, start + this.perPage);
+        },
+        next(){ if (this.page+1 < this.pages){ this.page++; this.paginate(); this.persistToHash(); } },
+        prev(){ if (this.page>0){ this.page--; this.paginate(); this.persistToHash(); } },
+
+        // CSV export of current filtered rows
+        exportCSV(){
+          const rows = this.filtered;
+          if (!rows.length) { alert("No rows to export."); return; }
+          const header = ["severity","cvss","component","version","purl","licenses","id","dataset","links","firstSeen"];
+          const lines = [header.join(",")];
+          for (const r of rows) {
+            const csv = [
+              r.severity ?? "",
+              r.cvss ?? "",
+              r.component ?? "",
+              r.version ?? "",
+              r.purl ?? "",
+              (r.licenses||[]).join("|"),
+              r.id ?? "",
+              r.dataset ?? "",
+              (r.urls||[]).join("|"),
+              r.firstSeen ?? ""
+            ].map(x => `"${String(x).replace(/"/g,'""')}"`).join(",");
+            lines.push(csv);
+          }
+          const blob = new Blob([lines.join("\n")], {type: "text/csv;charset=utf-8;"});
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "sbom-filtered.csv";
+          a.click();
+          URL.revokeObjectURL(url);
+        },
+
+        // Group-by Components
+        buildGrouped(){
+          const byKey = new Map();
+          for (const r of this.filtered) {
+            const key = (r.component || "unknown").toLowerCase();
+            const g = byKey.get(key) || {
+              key, component: r.component || "unknown", purlSample: r.purl || "",
+              datasets: new Set(), licenses: new Set(),
+              vulnCount: 0, worstSeverity: "UNKNOWN", worstSeverityRank: -1, maxCVSS: null
+            };
+            g.datasets.add(r.dataset);
+            (r.licenses||[]).forEach(l => g.licenses.add(l));
+            g.vulnCount += 1;
+            if ((r.severityRank ?? -1) > g.worstSeverityRank){
+              g.worstSeverityRank = r.severityRank ?? -1;
+              g.worstSeverity = (r.severity || "UNKNOWN").toUpperCase();
+            }
+            if (r.cvss != null) g.maxCVSS = Math.max(g.maxCVSS ?? -Infinity, r.cvss);
+            if (!g.purlSample && r.purl) g.purlSample = r.purl;
+            byKey.set(key, g);
+          }
+          this.grouped = Array.from(byKey.values()).map(g => ({
+            ...g,
+            datasets: Array.from(g.datasets).sort(),
+            licenses: Array.from(g.licenses).sort()
+          }));
+          this.applyGroup();
+        },
+        applyGroup(){
+          const key = this.compSortKey;
+          const dir = this.compSortDir === "desc" ? -1 : 1;
+          this.grouped.sort((a,b)=>{
+            const A = (a[key] ?? "");
+            const B = (b[key] ?? "");
+            if (typeof A === "number" && typeof B === "number") return (A-B)*dir;
+            return String(A).localeCompare(String(B)) * dir;
+          });
+          this.compPage = 0;
+          this.groupPaginate();
+        },
+        groupPaginate(){
+          this.compPages = Math.max(1, Math.ceil(this.grouped.length / this.compPerPage));
+          const start = this.compPage * this.compPerPage;
+          this.groupedPaged = this.grouped.slice(start, start + this.compPerPage);
+        },
+        compNext(){ if (this.compPage+1 < this.compPages){ this.compPage++; this.groupPaginate(); } },
+        compPrev(){ if (this.compPage>0){ this.compPage--; this.groupPaginate(); } },
+
+        // Compare datasets
+        buildCompare(){
+          this.cmpReady = false;
+          if (!this.cmpA || !this.cmpB || this.cmpA===this.cmpB) return;
+          const A = this.items.filter(x => x.dataset===this.cmpA);
+          const B = this.items.filter(x => x.dataset===this.cmpB);
+          const sevCount = list => list.reduce((acc,r)=>{const s=(r.severity||"UNKNOWN").toUpperCase(); acc[s]=(acc[s]||0)+1; return acc;},{});
+          const ids = list => new Set(list.map(r => r.id || `${r.component}@${r.version||''}`));
+          const setA = ids(A), setB = ids(B);
+          const onlyA = [...setA].filter(x => !setB.has(x)).slice(0,500);
+          const onlyB = [...setB].filter(x => !setA.has(x)).slice(0,500);
+          const sevA = sevCount(A), sevB = sevCount(B);
+          const deltaSev = {};
+          for (const s of ['CRITICAL','HIGH','MEDIUM','LOW','INFO','UNKNOWN']) deltaSev[s] = (sevB[s]||0)-(sevA[s]||0);
+          this.cmpStats = {
+            A: { total: A.length, sev: sevA },
+            B: { total: B.length, sev: sevB },
+            delta: { total: B.length - A.length, sev: deltaSev },
+            onlyA, onlyB
+          };
+          this.cmpReady = true;
+        },
+
+        // Top CVE helper
+        applyTopCVE(id){
+          this.q = id || "";
+          this.applyFilters(true);
+        },
+
+        // Charts
+        drawDonut(){
+          const ctx = document.getElementById("donut");
+          if (!ctx) return;
+          const sev = this.overall.severityCounts || {};
+          const labels = ['CRITICAL','HIGH','MEDIUM','LOW','INFO'];
+          const data = labels.map(k => sev[k] || 0);
+          if (this.donutChart) this.donutChart.destroy();
+          this.donutChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: { labels, datasets: [{ data }] },
+            options: { plugins: { legend: { position: 'bottom' } }, cutout: '65%' }
+          });
+        },
+        drawSparklines(){
+          const entries = (this.history.entries || []).slice(-24); // last 24 points
+          const labels = entries.map(e => new Date(e.generatedAt).toLocaleDateString());
+          const total = entries.map(e => e.overall?.total || 0);
+          this.makeSpark('sparkTotal', labels, total);
+          for (const k of ['CRITICAL','HIGH','MEDIUM','LOW']) {
+            const arr = entries.map(e => e.overall?.severityCounts?.[k] || 0);
+            this.makeSpark(`spark-${k}`, labels, arr);
+          }
+        },
+        makeSpark(id, labels, data){
+          const el = document.getElementById(id);
+          if (!el) return;
+          if (this.sparks[id]) this.sparks[id].destroy();
+          this.sparks[id] = new Chart(el, {
+            type: 'line',
+            data: { labels, datasets: [{ data, tension: 0.3, pointRadius: 0, borderWidth: 2 }] },
+            options: {
+              responsive: true,
+              plugins: { legend: { display: false }, tooltip: { enabled: true } },
+              scales: { x: { display: false }, y: { display: false } },
+              elements: { line: { fill: false } }
+            }
+          });
+        },
+
+        // save/load view (localStorage)
+        saveView(){
+          const s = {
+            q:this.q, dataset:this.dataset, severity:this.severity, fix:this.fix,
+            cvssMin:this.cvssMin, onlyDirect:this.onlyDirect,
+            sortKey:this.sortKey, sortDir:this.sortDir, tab:this.tab
+          };
+          localStorage.setItem("sbom_view", JSON.stringify(s));
+          alert("View saved.");
+        },
+        loadView(){
+          const s = JSON.parse(localStorage.getItem("sbom_view") || "null");
+          if (!s) { alert("No saved view."); return; }
+          Object.assign(this, s);
+          this.applyFilters(true);
+        },
+
+        // state in URL
+        persistToHash(){
+          const h = new URLSearchParams({
+            tab: this.tab,
+            q: this.q || "", ds: this.dataset || "", sev: this.severity || "",
+            fix: this.fix || "", cvss: String(this.cvssMin || 0),
+            dir: this.sortDir, key: this.sortKey, dirc: this.onlyDirect ? "1" : "0",
+            p: String(this.page),
+            cdir: this.compSortDir, ckey: this.compSortKey, cp: String(this.compPage),
+            cmpA: this.cmpA || "", cmpB: this.cmpB || ""
+          }).toString();
+          location.hash = h;
+        },
+        restoreFromHash(){
+          const s = new URLSearchParams(location.hash.replace(/^#/, ""));
+          this.tab = s.get("tab") || this.tab;
+          this.q = s.get("q") || this.q;
+          this.dataset = s.get("ds") || this.dataset;
+          this.severity = s.get("sev") || this.severity;
+          this.fix = s.get("fix") || this.fix;
+          this.cvssMin = Number(s.get("cvss") || this.cvssMin || 0);
+          this.sortDir = s.get("dir") || this.sortDir;
+          this.sortKey = s.get("key") || this.sortKey;
+          this.onlyDirect = s.get("dirc")==="1" ? true : this.onlyDirect;
+          this.page = Number(s.get("p") || this.page || 0);
+          this.compSortDir = s.get("cdir") || this.compSortDir;
+          this.compSortKey = s.get("ckey") || this.compSortKey;
+          this.compPage = Number(s.get("cp") || this.compPage || 0);
+          this.cmpA = s.get("cmpA") || this.cmpA;
+          this.cmpB = s.get("cmpB") || this.cmpB;
+          if (this.cmpA && this.cmpB && this.cmpA !== this.cmpB) this.buildCompare();
+        }
+      }
+    }
+  </script>
+</body>
 </html>

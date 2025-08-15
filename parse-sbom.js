@@ -1,429 +1,262 @@
+#!/usr/bin/env node
+// Build a fast index JSON from CycloneDX files under sboms/* (any subfolder).
+// Outputs:
+//   - public/sbom-index.json   (snapshot, metrics, deltas)
+//   - public/history.json      (rolling history for sparklines)
+//   - public/tracker.json      (per-vuln lifecycle for TTF & open age)
 
-/* parse-sbom.js — Enhanced with charts & rich insights */
-(function () {
-  const state = {
-    index: null,
-    history: [],
-    tracker: { vulns: [] },
-    manifest: null,
-    sboms: [],
-    components: [],
-    vulns: [],
-    vendors: new Map(),
-    licenses: new Map(),
-    charts: {},
-  };
+import fs from "fs";
+import path from "path";
+import { globSync } from "glob";
+import { fileURLToPath } from "url";
 
-  // ---------- Utilities ----------
-  const $  = (sel) => document.querySelector(sel);
-  const $$ = (sel) => Array.from(document.querySelectorAll(sel));
-  const esc = (s) => (s == null ? "" : String(s));
-  const uniq = (arr) => Array.from(new Set(arr.filter(Boolean)));
-  const by = (k) => (a, b) => esc(a[k]).localeCompare(esc(b[k]));
-  const fmt = new Intl.NumberFormat();
-  const setSubtitle = (t) => ($("#subtitle").textContent = t);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-  function pill(text, tone='ok') {
-    const cx = tone === 'bad' ? 'pill-bad' : tone === 'warn' ? 'pill-warn' : 'pill-ok';
-    return `<span class="pill ${cx}">${esc(text)}</span>`;
+const SBOMS_DIR = path.join(__dirname, "sboms");
+const OUT_DIR   = path.join(__dirname, "public");
+const SNAP_FILE = path.join(OUT_DIR, "sbom-index.json");
+const HIST_FILE = path.join(OUT_DIR, "history.json");
+const TRK_FILE  = path.join(OUT_DIR, "tracker.json");
+
+function readJSON(p) { try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return null; } }
+function writeJSON(p, obj) { fs.writeFileSync(p, JSON.stringify(obj, null, 2)); }
+
+function severityOrder(s) {
+  const map = { critical:4, high:3, medium:2, low:1, info:0, none:0, unknown:0 };
+  return map[String(s||"").toLowerCase()] ?? 0;
+}
+function pickCVSS(scores = []) {
+  let best = null;
+  for (const r of scores) {
+    const score = r.score ?? r.baseScore;
+    const severity = r.severity || r.baseSeverity;
+    if (score == null && !severity) continue;
+    const obj = { score: score ?? null, severity: (severity||"").toUpperCase(), method: r.method || r.source || null };
+    if (!best || (obj.score ?? 0) > (best.score ?? 0)) best = obj;
   }
-  function chip(text) { return `<span class="chip">${esc(text)}</span>` }
-  async function jget(path) { const r=await fetch(path,{cache:'no-store'}); if(!r.ok) throw new Error(`${path}: ${r.status}`); return r.json(); }
-  
-const get = (obj, path, dflt = null) => {
-  if (obj === null || obj === undefined) return dflt;
-  const parts = Array.isArray(path)
-    ? path.flatMap((p) => String(p).split('.').filter(Boolean))
-    : (typeof path === 'string' ? path.split('.').filter(Boolean) : [String(path)]);
-  let cur = obj;
-  for (const key of parts) {
-    if (cur && typeof cur === 'object' && key in cur) {
-      cur = cur[key];
-    } else {
-      return dflt;
-    }
+  return best;
+}
+function licenseNames(licenses) {
+  if (!Array.isArray(licenses)) return [];
+  const out = [];
+  for (const l of licenses) {
+    if (l.license?.id) out.push(l.license.id);
+    else if (l.license?.name) out.push(l.license.name);
+    else if (l.expression) out.push(l.expression);
   }
-  return cur === undefined ? dflt : cur;
-};
-function inc(map, key) { if (!key) return; map.set(key, (map.get(key) || 0) + 1); }
+  return out;
+}
+function countSeverities(items) {
+  const init = { CRITICAL:0, HIGH:0, MEDIUM:0, LOW:0, INFO:0, UNKNOWN:0 };
+  return items.reduce((acc, it) => {
+    const s = (it.severity || "UNKNOWN").toUpperCase();
+    acc[s] = (acc[s] || 0) + 1;
+    return acc;
+  }, init);
+}
+function median(arr) {
+  const a = arr.filter(x => Number.isFinite(x)).sort((x,y)=>x-y);
+  if (!a.length) return null;
+  const m = Math.floor(a.length/2);
+  return a.length % 2 ? a[m] : (a[m-1]+a[m])/2;
+}
+function daysBetween(aISO, bISO) {
+  const a = new Date(aISO).getTime(), b = new Date(bISO).getTime();
+  return Math.max(0, Math.round((b - a) / (1000*60*60*24)));
+}
 
-  // Normalize models
-  function normalizeComponent(c, sbomName) {
-    const licArray = get(c, 'licenses', []).map(l => l.license?.id || l.license?.name).filter(Boolean);
-    const license = licArray[0] || '';
-    const supplier = get(c, 'supplier.name') || get(c, 'publisher') || '';
-    return {
-      sbom: sbomName || '',
-      name: c.name || '',
-      version: c.version || '',
-      purl: c.purl || '',
-      license,
-      licenses: licArray,
-      supplier,
-      scope: c.scope || '',
-    };
-  }
-  function normalizeVulns(bom) {
-    const vulns = get(bom, 'vulnerabilities', [])
-      .map(v => ({
-        id: v.id || v.source?.name || '',
-        severity: v.ratings?.[0]?.severity || v.analysis?.state || '',
-        affects: uniq((v.affects || []).map(a => a.ref)).join(', '),
-        range: (v.affects || []).map(a => a.version || a.range).filter(Boolean).join(', '),
-        description: v.description || v.detail || v.credits || '',
-        refs: (v.advisories || v.references || []).map(r => r.url).filter(Boolean),
-      }));
-    return vulns;
-  }
+function indexCycloneDX(json, datasetId) {
+  const componentMap = new Map();
+  (json.components || []).forEach(c => {
+    const key = c["bom-ref"] || c["bomRef"] || c.purl || `${c.name || "component"}@${c.version || ""}`;
+    componentMap.set(key, c);
+  });
 
-  // ---------- Rendering ----------
-  function renderKPIs() {
-    const uniqueVendors = state.vendors.size;
-    const uniqueLicenses = state.licenses.size;
-    const vulnCount = state.vulns.length;
-    const compCount = state.components.length;
+  const vuls = [];
+  for (const v of json.vulnerabilities || []) {
+    const affects = (v.affects || []).map(a => a.ref).filter(Boolean);
+    const rating = pickCVSS(v.ratings || v.cvss || []);
+    const sev = (v.severity || rating?.severity || "UNKNOWN").toUpperCase();
 
-    const scopes = state.components.reduce((acc,c)=>{
-      const s=(c.scope||'runtime').toLowerCase(); acc[s]=(acc[s]||0)+1; return acc;
-    },{});
-    const scopeText = Object.entries(scopes).map(([k,v])=>`${k}:${v}`).join(' • ');
-
-    const tiles = [
-      { label: 'Components', value: fmt.format(compCount) },
-      { label: 'Runtime', value: fmt.format(scopes.runtime||0) },
-      { label: 'Dev/Test', value: fmt.format((scopes.dev||0)+(scopes.test||0)) },
-      { label: 'Vendors', value: fmt.format(uniqueVendors) },
-      { label: 'Licenses', value: fmt.format(uniqueLicenses) },
-      { label: 'Vulnerabilities', value: fmt.format(vulnCount), tone: vulnCount ? 'bad' : 'ok' },
-    ];
-
-    $('#kpis').innerHTML = tiles.map(t => `
-      <div class="kpi">
-        <div class="text-xs text-slate-500 mb-1">${t.label}</div>
-        <div class="text-2xl font-extrabold">${t.value}</div>
-      </div>`).join('');
-  }
-
-  function minibar(val, max) {
-    const pct = max ? Math.max(2, Math.round((val / max) * 100)) : 0;
-    return `<div class="w-40 bg-slate-200 rounded-full minibar"><div class="h-full bg-brand-500 rounded-full" style="width:${pct}%"></div></div>`;
-  }
-
-  function renderOverview() {
-    const sbomList = $('#sbomList');
-    const meta = $('#metaList');
-
-    const entries = state.index?.sboms || [];
-    const maxCount = Math.max(...entries.map(s => s.count || 0), 0);
-
-    sbomList.innerHTML = entries.map(s => `
-      <div class="card p-4 flex items-center justify-between gap-4">
-        <div class="min-w-0">
-          <div class="font-semibold truncate">${esc(s.name || s.path || 'SBOM')}</div>
-          <div class="text-xs text-slate-500 mono truncate">${esc(s.path || '')}</div>
-        </div>
-        <div class="flex items-center gap-2">
-          ${chip(esc(s.format || 'CycloneDX'))}
-          ${chip('components: ' + (s.count ?? '—'))}
-          ${minibar(s.count||0, maxCount)}
-          <a class="btn" href="${'sboms/' + (s.path || '')}" target="_blank" rel="noreferrer">Open</a>
-        </div>
-      </div>`).join('');
-
-    const kv = [];
-    if (state.manifest) {
-      kv.push(['Manifest name', get(state.manifest, 'name', '—')]);
-      kv.push(['Version', get(state.manifest, 'version', '—')]);
-      kv.push(['Created', get(state.manifest, 'metadata.timestamp', '—')]);
-      const suppliers = uniq((get(state.manifest, 'components', []) || []).map(c => c.supplier?.name).filter(Boolean)).length;
-      kv.push(['Suppliers', String(suppliers)]);
-    }
-    const scopes = state.components.reduce((acc,c)=>{const s=(c.scope||'runtime').toLowerCase(); acc[s]=(acc[s]||0)+1; return acc;},{});
-    kv.push(['Scope split', Object.entries(scopes).map(([k,v])=>`${k}:${v}`).join(' • ')]);
-
-    if (state.tracker?.vulns?.length) {
-      const sev = (state.tracker.vulns || []).reduce((acc,v)=>{acc[v.severity]=(acc[v.severity]||0)+1;return acc;},{});
-      kv.push(['Tracker vulns', JSON.stringify(sev)]);
-    }
-    meta.innerHTML = kv.map(([k,v]) => `
-      <div><dt class="text-xs text-slate-500">${esc(k)}</dt><dd class="font-medium">${esc(v)}</dd></div>
-    `).join('');
-  }
-
-  function renderClouds() {
-    const licenseWrap = $('#licenseCloud');
-    const vendorWrap = $('#vendorCloud');
-
-    const topLicenses = Array.from(state.licenses.entries()).sort((a,b)=>b[1]-a[1]).slice(0, 12);
-    const topVendors = Array.from(state.vendors.entries()).sort((a,b)=>b[1]-a[1]).slice(0, 12);
-
-    licenseWrap.innerHTML = topLicenses.map(([l,c])=>`<button data-filter-license="${esc(l)}" class="btn">${esc(l)} ${chip(c)}</button>`).join('');
-    vendorWrap.innerHTML  = topVendors.map(([v,c])=>`<button data-filter-vendor="${esc(v)}" class="btn">${esc(v)} ${chip(c)}</button>`).join('');
-  }
-
-  function renderComponents(filterText='') {
-    const tbody = $('#componentsBody');
-    const includeDev = $('#toggleDev').checked;
-    const onlyWithLicense = $('#toggleNoLicense').checked;
-    const f = filterText.toLowerCase();
-
-    const rows = state.components.filter(c => {
-      if (!includeDev && ['dev', 'test', 'optional'].includes((c.scope||'').toLowerCase())) return false;
-      if (onlyWithLicense && !c.license) return false;
-      const hay = [c.name, c.version, c.purl, c.license, c.supplier].join(' ').toLowerCase();
-      return hay.includes(f);
-    }).sort(by('name')).map(c => `
-      <tr>
-        <td>
-          <div class="font-medium">${esc(c.name)}</div>
-          <div class="text-xs text-slate-500 mono">${esc(c.purl||'')}</div>
-        </td>
-        <td class="mono">${esc(c.version)}</td>
-        <td class="mono">${esc(c.purl)}</td>
-        <td>${c.license ? pill(c.license, 'ok') : '<span class="text-slate-400">—</span>'}</td>
-        <td>${esc(c.supplier||'')}</td>
-        <td>${esc(c.scope||'')}</td>
-      </tr>`).join('');
-
-    tbody.innerHTML = rows || `<tr><td colspan="6" class="text-center text-slate-400 py-8">No components match.</td></tr>`;
-    $('#compCount').textContent = fmt.format(rows ? rows.split('<tr>').length - 1 : 0);
-  }
-
-  function renderVulns(filterText='') {
-    const tbody = $('#vulnsBody');
-    const f = filterText.toLowerCase();
-    const rows = state.vulns.filter(v => {
-      const hay = [v.id, v.severity, v.affects, v.description].join(' ').toLowerCase();
-      return hay.includes(f);
-    }).map(v => `
-      <tr>
-        <td>
-          <div class="font-semibold">${esc(v.id)}</div>
-          ${v.refs?.slice(0,2).map(u => `<div class="text-xs"><a class="underline" href="${esc(u)}" target="_blank" rel="noreferrer">${esc(u)}</a></div>`).join('')}
-        </td>
-        <td>${v.severity ? pill(v.severity, (v.severity||'').match(/(high|critical)/i) ? 'bad' : (v.severity||'').match(/(medium)/i) ? 'warn' : 'ok') : '—'}</td>
-        <td class="mono">${esc(v.affects || '—')}</td>
-        <td class="mono">${esc(v.range || '—')}</td>
-        <td>${esc(v.description || '—')}</td>
-      </tr>`).join('');
-    tbody.innerHTML = rows || `<tr><td colspan="5" class="text-center text-slate-400 py-8">No vulnerabilities recorded.</td></tr>`;
-    $('#vulnCount').textContent = fmt.format(rows ? rows.split('<tr>').length - 1 : 0);
-  }
-
-  function renderHistory() {
-    const wrap = $('#history');
-    const items = (state.history || []).map(h => `
-      <div class="card p-4">
-        <div class="flex items-center justify-between">
-          <div class="font-semibold">${esc(h.title || h.event || 'Event')}</div>
-          <div class="text-xs text-slate-500">${esc(h.date || h.timestamp || '')}</div>
-        </div>
-        <div class="text-sm mt-2">${esc(h.description || h.notes || '')}</div>
-      </div>`).join('');
-    wrap.innerHTML = items || `<div class="text-slate-500">No history entries found.</div>`;
-  }
-
-  function renderFiles() {
-    const pub = $('#publicFiles');
-    const sbo = $('#sbomFiles');
-    const p = state.index?.public ?? ['public/history.json', 'public/sbom-index.json', 'public/tracker.json'];
-    const s = state.index?.sboms?.map(it => 'sboms/' + (it.path || it.name || '')) ?? [];
-
-    pub.innerHTML = p.map(f => `<div class="card p-3 flex items-center justify-between"><span class="mono">${esc(f)}</span><a class="btn" href="${esc(f)}" target="_blank" rel="noreferrer">Open</a></div>`).join('');
-    sbo.innerHTML = s.map(f => `<div class="card p-3 flex items-center justify-between"><span class="mono">${esc(f)}</span><a class="btn" href="${esc(f)}" target="_blank" rel="noreferrer">Open</a></div>`).join('');
-  }
-
-  // ---------- Charts ----------
-  function destroyCharts() {
-    Object.values(state.charts).forEach(ch => ch?.destroy());
-    state.charts = {};
-  }
-
-  function ecosystemFromPurl(purl) {
-    if (!purl) return 'unknown';
-    // purl format: pkg:type/name@version
-    const m = purl.match(/^pkg:([^/]+)/);
-    return (m && m[1]) || 'unknown';
-  }
-
-  function chart(ctx, type, data, options={}) {
-    return new Chart(ctx, { type, data, options: Object.assign({
-      animation: { duration: 250 },
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { display: true, position: 'bottom' } },
-      scales: (type==='bar' || type==='line') ? { y: { beginAtZero:true, ticks: { precision:0 } } } : {}
-    }, options) });
-  }
-
-  function renderCharts() {
-    destroyCharts();
-
-    // Components by SBOM
-    const labelsBySbom = (state.index?.sboms || []).map(s => s.name || s.path);
-    const countsBySbom = (state.index?.sboms || []).map(s => s.count || 0);
-    state.charts.bySbom = chart($('#chartBySbom'), 'bar', {
-      labels: labelsBySbom, datasets: [{ label:'components', data: countsBySbom }]
-    });
-
-    // License distribution (top 8 + other)
-    const licPairs = Array.from(state.licenses.entries()).sort((a,b)=>b[1]-a[1]);
-    const topLic = licPairs.slice(0,8);
-    const other = licPairs.slice(8).reduce((n, [,c])=>n+c,0);
-    const licLabels = topLic.map(([l])=>l).concat(other?['other']:[]);
-    const licData = topLic.map(([,c])=>c).concat(other?[other]:[]);
-    state.charts.licenses = chart($('#chartLicenses'), 'doughnut', {
-      labels: licLabels, datasets: [{ data: licData }]
-    }, { plugins:{ legend:{ position:'right' }}});
-
-    // Top vendors (top 8)
-    const venPairs = Array.from(state.vendors.entries()).sort((a,b)=>b[1]-a[1]).slice(0,8);
-    state.charts.vendors = chart($('#chartVendors'), 'bar', {
-      labels: venPairs.map(([v])=>v),
-      datasets: [{ label:'components', data: venPairs.map(([,c])=>c) }]
-    });
-
-    // Ecosystem from purl
-    const ecoMap = new Map();
-    state.components.forEach(c => {
-      const e = ecosystemFromPurl(c.purl);
-      ecoMap.set(e, (ecoMap.get(e)||0)+1);
-    });
-    const ecoPairs = Array.from(ecoMap.entries()).sort((a,b)=>b[1]-a[1]).slice(0,10);
-    state.charts.eco = chart($('#chartEco'), 'doughnut', {
-      labels: ecoPairs.map(([e])=>e),
-      datasets: [{ data: ecoPairs.map(([,c])=>c) }]
-    }, { plugins:{ legend:{ position:'right' }}});
-
-    // Severity split
-    const sevBuckets = { critical:0, high:0, medium:0, low:0, none:0, unknown:0 };
-    state.vulns.forEach(v => {
-      const s = (v.severity||'').toLowerCase();
-      const key = /critical/.test(s) ? 'critical' :
-                  /high/.test(s) ? 'high' :
-                  /medium/.test(s) ? 'medium' :
-                  /low/.test(s) ? 'low' :
-                  /none/.test(s) ? 'none' : 'unknown';
-      sevBuckets[key]++;
-    });
-    state.charts.sev = chart($('#chartSev'), 'bar', {
-      labels: Object.keys(sevBuckets),
-      datasets: [{ label:'count', data: Object.values(sevBuckets) }]
-    });
-
-    // Scope split
-    const scopes = state.components.reduce((acc,c)=>{ const s=(c.scope||'runtime').toLowerCase(); acc[s]=(acc[s]||0)+1; return acc; },{});
-    const scopePairs = Object.entries(scopes);
-    state.charts.scopes = chart($('#chartScopes'), 'bar', {
-      labels: scopePairs.map(([k])=>k),
-      datasets: [{ label: 'components', data: scopePairs.map(([,v])=>v) }]
-    });
-  }
-
-  // ---------- Interactions ----------
-  function wireTabs() {
-    $$('.tab').forEach(btn => btn.addEventListener('click', () => {
-      $$('.tab').forEach(b => b.classList.remove('tab-active'));
-      btn.classList.add('tab-active');
-      const id = btn.getAttribute('data-tab');
-      ['overview','components','vulns','history','files'].forEach(t => {
-        $('#tab-'+t).classList.toggle('hidden', t !== id);
+    const targets = affects.length ? affects : [null];
+    for (const ref of targets) {
+      const c = ref ? (componentMap.get(ref) || {}) : {};
+      const lic = licenseNames(c.licenses);
+      vuls.push({
+        dataset: datasetId,
+        id: v.id || null,
+        title: v.description?.slice(0, 200) || "Vulnerability",
+        severity: sev,
+        severityRank: severityOrder(sev),
+        cvss: rating?.score ?? null,
+        component: c.name || null,
+        version: c.version || null,
+        purl: c.purl || null,
+        licenses: lic,
+        direct: (c.scope || "").toLowerCase() !== "optional" && (c.scope || "").toLowerCase() !== "transitive",
+        cwes: (v.cwes || []).map(x => x.id || x).filter(Boolean),
+        urls: (v.references || []).map(r => r.url).filter(Boolean),
+        fixedVersions: (v.analysis?.response || []).includes("update") ? ["*"] : []
       });
-    }));
-  }
-  function wireSearches() {
-    $('#quickSearch').addEventListener('keydown', (e)=>{
-      if (e.key === 'Enter') { $('#compSearch').value = e.currentTarget.value; renderComponents(e.currentTarget.value); document.querySelector('[data-tab="components"]').click(); }
-    });
-    $('#compSearch').addEventListener('input', (e)=> renderComponents(e.currentTarget.value));
-    $('#vulnSearch').addEventListener('input', (e)=> renderVulns(e.currentTarget.value));
-    $('#toggleDev').addEventListener('change', ()=> renderComponents($('#compSearch').value));
-    $('#toggleNoLicense').addEventListener('change', ()=> renderComponents($('#compSearch').value));
-    $('#downloadBtn').addEventListener('click', ()=>{
-      const html = document.documentElement.outerHTML;
-      const blob = new Blob([html], { type: 'text/html' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'sbom-explorer.html';
-      a.click(); setTimeout(()=>URL.revokeObjectURL(a.href), 3000);
-    });
-  }
-  function wireCloudFilters() {
-    document.body.addEventListener('click', (e)=>{
-      const lic = e.target.closest('[data-filter-license]')?.getAttribute('data-filter-license');
-      const ven = e.target.closest('[data-filter-vendor]')?.getAttribute('data-filter-vendor');
-      if (lic || ven) {
-        const q = [lic, ven].filter(Boolean).join(' ');
-        $('#compSearch').value = q;
-        renderComponents(q);
-        document.querySelector('[data-tab="components"]').click();
-      }
-    });
-  }
-
-  // ---------- Boot ----------
-  async function boot() {
-    try {
-      state.index = await jget('public/sbom-index.json').catch(()=>({}));
-      setSubtitle(state.index?.title || 'SBOMs & project metadata');
-
-      const [history, tracker, manifest] = await Promise.all([
-        jget('public/history.json').catch(()=>[]),
-        jget('public/tracker.json').catch(()=>({ vulns: [] })),
-        jget('sboms/manifest.json').catch(()=>null),
-      ]);
-      state.history = Array.isArray(history) ? history : (history.items || history.events || []);
-      state.tracker = tracker || { vulns: [] };
-      state.manifest = manifest;
-
-      const sbomEntries = state.index?.sboms || [];
-      const docs = await Promise.all(sbomEntries.map(async (s) => {
-        const path = 'sboms/' + (s.path || s.name || '');
-        const bom = await jget(path).catch(()=>null);
-        return { entry: s, bom, name: s.name || s.path || 'SBOM' };
-      }));
-
-      state.sboms = docs.filter(d => d.bom).map(d => d.bom);
-
-      for (const doc of docs) {
-        if (!doc.bom) continue;
-        const comps = get(doc.bom, 'components', []);
-        for (const c of comps) {
-          const nc = normalizeComponent(c, doc.name);
-          state.components.push(nc);
-          inc(state.vendors, nc.supplier);
-          (nc.licenses || []).forEach(l => inc(state.licenses, l));
-        }
-        state.vulns.push(...normalizeVulns(doc.bom));
-      }
-
-      if (Array.isArray(state.tracker.vulns)) {
-        state.vulns.push(...state.tracker.vulns.map(v => ({
-          id: v.id || v.cve || v.alias || '',
-          severity: v.severity || v.cvss?.severity || '',
-          affects: (v.affects || v.components || []).join(', '),
-          range: v.range || v.version || '',
-          description: v.title || v.description || '',
-          refs: v.refs || v.links || [],
-        })));
-      }
-
-      // Paint UI
-      renderKPIs();
-      renderOverview();
-      renderClouds();
-      renderComponents('');
-      renderVulns('');
-      renderHistory();
-      renderFiles();
-      renderCharts();
-
-      $('#downloadBtn').classList.remove('hidden');
-    } catch (err) {
-      console.error(err);
-      setSubtitle('Failed to load assets. See console.');
     }
   }
 
-  wireTabs(); wireSearches(); wireCloudFilters(); boot();
-})();
+  return {
+    dataset: datasetId,
+    created: json.metadata?.timestamp || null,
+    components: (json.components || []).length,
+    vulnerabilities: vuls.length,
+    items: vuls
+  };
+}
+
+function makeKey(it) {
+  // Stable key per vuln occurrence
+  return `${it.dataset}::${it.id || (it.component || "comp")+"@"+(it.version||"")}`;
+}
+
+function buildTopCVEs(items) {
+  const map = new Map();
+  for (const it of items) {
+    const id = it.id || "";
+    if (!/^CVE-\d{4}-\d{4,}$/.test(id)) continue;
+    const cur = map.get(id) || { id, count:0, datasets:new Set(), maxCVSS:null, worstSeverityRank:-1 };
+    cur.count += 1;
+    cur.datasets.add(it.dataset);
+    if (it.cvss != null) cur.maxCVSS = Math.max(cur.maxCVSS ?? -Infinity, it.cvss);
+    if ((it.severityRank ?? -1) > cur.worstSeverityRank) cur.worstSeverityRank = it.severityRank ?? -1;
+    map.set(id, cur);
+  }
+  return [...map.values()]
+    .map(x => ({ id:x.id, count:x.count, datasets:[...x.datasets].sort(), maxCVSS: x.maxCVSS, worstSeverityRank:x.worstSeverityRank }))
+    .sort((a,b)=> (b.worstSeverityRank - a.worstSeverityRank) || (b.count - a.count) || (b.maxCVSS??0)-(a.maxCVSS??0))
+    .slice(0, 10); // top 10
+}
+
+function main() {
+  if (!fs.existsSync(OUT_DIR)) fs.mkdirSync(OUT_DIR, { recursive: true });
+  const now = new Date().toISOString();
+
+  // 1) Parse SBOMs
+  const files = globSync("**/*.cyclonedx.json", { cwd: SBOMS_DIR, absolute: true, nodir: true });
+  const datasets = [];
+  for (const f of files) {
+    const json = readJSON(f);
+    if (!json) continue;
+    const rel = path.relative(SBOMS_DIR, f).replace(/\\/g, "/");
+    const datasetId = rel.split("/")[0];
+    datasets.push(indexCycloneDX(json, datasetId));
+  }
+  const items = datasets.flatMap(d => d.items);
+
+  // 2) Update tracker (firstSeen/lastSeen/closedAt)
+  const tracker = readJSON(TRK_FILE) || { vulns: {} };
+  const currentKeys = new Set();
+  for (const it of items) {
+    const key = makeKey(it);
+    currentKeys.add(key);
+    if (!tracker.vulns[key]) tracker.vulns[key] = { firstSeen: now, lastSeen: now, closedAt: null, meta: { id: it.id, component: it.component, dataset: it.dataset} };
+    tracker.vulns[key].lastSeen = now;
+    tracker.vulns[key].closedAt = null;
+  }
+  for (const [key, rec] of Object.entries(tracker.vulns)) {
+    if (!currentKeys.has(key) && rec.closedAt === null) rec.closedAt = now;
+  }
+  const entries = Object.entries(tracker.vulns);
+  if (entries.length > 12000) {
+    const closed = entries.filter(([,r]) => r.closedAt).sort((a,b)=> new Date(b[1].closedAt)-new Date(a[1].closedAt));
+    const keepClosed = new Set(closed.slice(0,5000).map(([k])=>k));
+    for (const [k, r] of entries) {
+      if (r.closedAt && !keepClosed.has(k)) delete tracker.vulns[k];
+    }
+  }
+  writeJSON(TRK_FILE, tracker);
+
+  // 3) Metrics
+  const datasetSummaries = datasets.map(d => ({
+    id: d.dataset,
+    created: d.created,
+    components: d.components,
+    vulnerabilities: d.vulnerabilities,
+    severityCounts: countSeverities(d.items)
+  }));
+  const overallSeverity = countSeverities(items);
+
+  const prev = readJSON(SNAP_FILE);
+  const prevMap = new Map();
+  if (prev?.datasets) for (const pd of prev.datasets) prevMap.set(pd.id, pd);
+
+  const datasetsWithDelta = datasetSummaries.map(d => {
+    const p = prevMap.get(d.id);
+    const delta = p ? (d.vulnerabilities - (p.vulnerabilities||0)) : null;
+    const severityDelta = {};
+    if (p?.severityCounts) for (const k of Object.keys(d.severityCounts)) severityDelta[k] = (d.severityCounts[k]||0)-(p.severityCounts[k]||0);
+    else for (const k of Object.keys(d.severityCounts)) severityDelta[k] = null;
+    return { ...d, delta, severityDelta };
+  });
+
+  const overallPrev = prev?.overall || null;
+  const overallDelta = overallPrev ? (items.length - (overallPrev.total||0)) : null;
+  const overallSevDelta = {};
+  if (overallPrev?.severityCounts) for (const k of Object.keys(overallSeverity)) overallSevDelta[k] = (overallSeverity[k]||0)-(overallPrev.severityCounts[k]||0);
+  else for (const k of Object.keys(overallSeverity)) overallSevDelta[k] = null;
+
+  const fixAvailRate = items.length ? Math.round(100 * (items.filter(it => (it.fixedVersions||[]).length>0).length / items.length)) : 0;
+
+  const ttfDays = Object.values(tracker.vulns).filter(r => r.closedAt)
+    .map(r => daysBetween(r.firstSeen, r.closedAt));
+  const ttfMedianDays = median(ttfDays);
+
+  const nowISO = now;
+  const openAgeDays = Object.entries(tracker.vulns).filter(([k]) => currentKeys.has(k))
+    .map(([,r]) => daysBetween(r.firstSeen, nowISO));
+  const openAgeMedianDays = median(openAgeDays);
+
+  const oldestOpen = Object.entries(tracker.vulns).filter(([k]) => currentKeys.has(k))
+    .map(([k,r]) => ({ key:k, days: daysBetween(r.firstSeen, nowISO), meta:r.meta }))
+    .sort((a,b)=> b.days - a.days)
+    .slice(0,5);
+
+  const itemsWithAge = items.map(it => {
+    const rec = tracker.vulns[makeKey(it)];
+    return { ...it, firstSeen: rec?.firstSeen || null };
+  });
+
+  const topCVEs = buildTopCVEs(itemsWithAge);
+
+  const snapshot = {
+    generatedAt: now,
+    datasets: datasetsWithDelta,
+    items: itemsWithAge,
+    overall: {
+      total: itemsWithAge.length,
+      severityCounts: overallSeverity,
+      delta: overallDelta,
+      severityDelta: overallSevDelta
+    },
+    metrics: {
+      fixAvailabilityRate: fixAvailRate,
+      ttfMedianDays,
+      openAgeMedianDays,
+      oldestOpen,
+      topCVEs
+    }
+  };
+  writeJSON(SNAP_FILE, snapshot);
+  console.log(`Wrote ${SNAP_FILE} with ${itemsWithAge.length} vulns across ${datasets.length} dataset(s).`);
+
+  // 4) History for sparklines
+  const hist = readJSON(HIST_FILE) || { entries: [] };
+  const perDataset = {};
+  for (const d of datasetSummaries) perDataset[d.id] = d.severityCounts;
+  hist.entries.push({
+    generatedAt: now,
+    overall: { total: snapshot.overall.total, severityCounts: snapshot.overall.severityCounts },
+    datasets: perDataset
+  });
+  if (hist.entries.length > 50) hist.entries = hist.entries.slice(-50);
+  writeJSON(HIST_FILE, hist);
+  console.log(`Updated ${HIST_FILE} (entries: ${hist.entries.length}).`);
+}
+main();
