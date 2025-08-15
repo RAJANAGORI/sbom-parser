@@ -48,7 +48,7 @@ jobs:
           node-version: "20"
 
       - name: Install deps
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Sync SBOM artifacts from Nightingale
         env:
