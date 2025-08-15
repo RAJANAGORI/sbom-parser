@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -9,8 +10,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script>
-      // Tailwind config: fine-tuned, but small
       tailwind.config = {
         theme: {
           extend: {
@@ -21,9 +22,7 @@
               brand: { 50:'#eef2ff', 400:'#818cf8', 500:'#6366f1', 600:'#4f46e5', 700:'#4338ca' },
               ok:'#10b981', warn:'#f59e0b', bad:'#ef4444'
             },
-            boxShadow: {
-              'soft': '0 10px 30px -12px rgba(2,6,23,.15)'
-            }
+            boxShadow: { 'soft': '0 10px 30px -12px rgba(2,6,23,.15)' }
           }
         }
       }
@@ -48,6 +47,7 @@
       .srch{ @apply w-full rounded-xl border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-400;}
       .fade-in{ animation:fade .3s ease-in-out;}
       @keyframes fade{ from{opacity:0; transform: translateY(4px)} to{opacity:1; transform: none} }
+      .minibar{height:6px}
     </style>
   </head>
   <body class="bg-slate-50 text-slate-900">
@@ -72,7 +72,7 @@
 
     <main class="mx-auto max-w-7xl px-4 py-6 grid gap-6">
       <!-- KPI STRIP -->
-      <section id="kpis" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"></section>
+      <section id="kpis" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4"></section>
 
       <!-- Tabs -->
       <nav class="flex gap-2">
@@ -92,8 +92,8 @@
               <div id="sbomList" class="grid gap-3"></div>
             </div>
             <div class="card p-4">
-              <h2 class="text-lg font-bold mb-2">Metadata</h2>
-              <dl id="metaList" class="grid grid-cols-1 sm:grid-cols-2 gap-y-2 gap-x-6"></dl>
+              <h2 class="text-lg font-bold mb-2">Metadata & Scope</h2>
+              <dl id="metaList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-2 gap-x-6"></dl>
             </div>
           </div>
           <aside class="card p-4">
@@ -104,6 +104,34 @@
               <div class="flex flex-wrap gap-2" id="vendorCloud"></div>
             </div>
           </aside>
+        </div>
+
+        <!-- Insights grid -->
+        <div class="mt-6 grid gap-6 lg:grid-cols-5">
+          <div class="card p-4 lg:col-span-2">
+            <h3 class="text-sm font-semibold text-slate-600 mb-2">Components by SBOM</h3>
+            <canvas id="chartBySbom" height="120"></canvas>
+          </div>
+          <div class="card p-4 lg:col-span-1">
+            <h3 class="text-sm font-semibold text-slate-600 mb-2">Licenses</h3>
+            <canvas id="chartLicenses" height="120"></canvas>
+          </div>
+          <div class="card p-4 lg:col-span-1">
+            <h3 class="text-sm font-semibold text-slate-600 mb-2">Top vendors</h3>
+            <canvas id="chartVendors" height="120"></canvas>
+          </div>
+          <div class="card p-4 lg:col-span-1">
+            <h3 class="text-sm font-semibold text-slate-600 mb-2">Ecosystems</h3>
+            <canvas id="chartEco" height="120"></canvas>
+          </div>
+          <div class="card p-4 lg:col-span-2">
+            <h3 class="text-sm font-semibold text-slate-600 mb-2">Vulnerability severities</h3>
+            <canvas id="chartSev" height="120"></canvas>
+          </div>
+          <div class="card p-4 lg:col-span-3">
+            <h3 class="text-sm font-semibold text-slate-600 mb-2">Component scopes</h3>
+            <canvas id="chartScopes" height="120"></canvas>
+          </div>
         </div>
       </section>
 
