@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Download .zip artifacts listed in sboms/manifest.json from NIGHTINGALE_OWNER/NIGHTINGALE_REPO
+ * Download .zip artifacts listed in the sboms/manifest.json from NIGHTINGALE_OWNER/NIGHTINGALE_REPO
  * and unzip into sboms/<dataset>/.
  *
  * Env:
