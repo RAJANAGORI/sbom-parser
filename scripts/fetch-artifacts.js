@@ -1,110 +1,134 @@
 #!/usr/bin/env node
 /**
- * scripts/fetch-artifacts.js
- * Pull allowed Trivy artifacts (ZIPs) from RAJANAGORI/Nightingale and unzip them under sboms/<name>/
- * Requires env: NIGHTINGALE_TOKEN
+ * Pulls the exact .zip artifacts listed in sboms/manifest.json
+ * from the Nightingale repo and unzips them into sboms/<dataset>/.
  */
 import fs from "fs";
 import path from "path";
-import { execSync } from "child_process";
-import https from "https";
 import AdmZip from "adm-zip";
-import { fileURLToPath } from "url";
+import { Octokit } from "@octokit/rest";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const OWNER = process.env.NIGHTINGALE_OWNER || "sidbhasin13";
+const REPO  = process.env.NIGHTINGALE_REPO  || "nightingale";
+const TOKEN = process.env.NIGHTINGALE_TOKEN;
 
-const NIGHTINGALE_OWNER = "RAJANAGORI";
-const NIGHTINGALE_REPO  = "Nightingale";
-const OUT_DIR = path.join(__dirname, "..", "sboms");
-const MANIFEST = path.join(OUT_DIR, "manifest.json");
-const GH_TOKEN = process.env.NIGHTINGALE_TOKEN;
-
-if (!GH_TOKEN) {
-  console.error("Missing NIGHTINGALE_TOKEN repo secret.");
+if (!TOKEN) {
+  console.error("NIGHTINGALE_TOKEN is missing. Set it in GitHub Actions secrets (COMMON_PAT → NIGHTINGALE_TOKEN) or your shell.");
   process.exit(1);
 }
 
-function log(...a){ console.log(...a); }
+const octokit = new Octokit({ auth: TOKEN });
+const ROOT = process.cwd();
+const SBOMS_DIR = path.join(ROOT, "sboms");
+const MANIFEST = path.join(SBOMS_DIR, "manifest.json");
 
-function ghGet(url, accept = "application/vnd.github+json") {
-  return new Promise((resolve, reject) => {
-    https.get(url, {
-      headers: {
-        "User-Agent": "sbom-parser-sync",
-        "Authorization": `Bearer ${GH_TOKEN}`,
-        "Accept": accept
-      }
-    }, res => {
-      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        ghGet(res.headers.location, "*/*").then(resolve, reject); // follow redirects
-        return;
-      }
-      const chunks = [];
-      res.on("data", c => chunks.push(c));
-      res.on("end", () => resolve({ status: res.statusCode, body: Buffer.concat(chunks) }));
-    }).on("error", reject);
-  });
-}
-
-function getAllowList() {
-  if (fs.existsSync(MANIFEST)) {
-    const j = JSON.parse(fs.readFileSync(MANIFEST, "utf8"));
-    const arts = Array.isArray(j.artifacts) ? j.artifacts : [];
-    return arts;
-  }
-  const zips = fs.existsSync(OUT_DIR) ? fs.readdirSync(OUT_DIR).filter(f => f.endsWith(".zip")) : [];
-  return zips.map(z => path.basename(z, ".zip"));
-}
-
-function unzipUsingSystem(zipPath, destDir) {
-  try {
-    execSync(`unzip -o "${zipPath}" -d "${destDir}"`, { stdio: "inherit" });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function unzipUsingLib(zipPath, destDir) {
-  const zip = new AdmZip(zipPath);
-  zip.extractAllTo(destDir, true);
-}
-
-(async () => {
-  const allow = getAllowList();
-  if (!allow.length) {
-    log("No allowed artifact names (empty allow-list). Nothing to do.");
-    process.exit(0);
-  }
-  if (!fs.existsSync(OUT_DIR)) fs.mkdirSync(OUT_DIR, { recursive: true });
-
-  const listUrl = `https://api.github.com/repos/${NIGHTINGALE_OWNER}/${NIGHTINGALE_REPO}/actions/artifacts?per_page=100`;
-  const { status, body } = await ghGet(listUrl);
-  if (status !== 200) {
-    console.error("Artifact list failed:", status, body.toString());
+function readManifest() {
+  if (!fs.existsSync(MANIFEST)) {
+    console.error(`Missing ${MANIFEST}. Create it with an "artifacts" array (see example in script).`);
     process.exit(1);
   }
-  const { artifacts } = JSON.parse(body.toString());
+  try {
+    const j = JSON.parse(fs.readFileSync(MANIFEST, "utf8"));
+    if (!Array.isArray(j.artifacts)) throw new Error("manifest.artifacts must be an array");
+    return j.artifacts;
+  } catch (e) {
+    console.error(`Failed to parse manifest: ${e.message}`);
+    process.exit(1);
+  }
+}
 
-  for (const want of allow) {
-    // exact artifact name match (recommended)
-    const hit = artifacts.find(a => a.name === want && !a.expired);
-    if (!hit) { log(`Not found or expired: ${want}`); continue; }
+async function findArtifactByName(name) {
+  // List artifacts (paginated) and pick newest with that name
+  const perPage = 100;
+  let page = 1;
+  let newest = null;
 
-    const zipPath = path.join(OUT_DIR, `${hit.name}.zip`);
-    const destDir = path.join(OUT_DIR, hit.name);
-    if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+  for (;;) {
+    const { data } = await octokit.actions.listArtifactsForRepo({
+      owner: OWNER,
+      repo: REPO,
+      per_page: perPage,
+      page
+    });
+    if (!data.artifacts?.length) break;
 
-    log(`Download ${hit.name} (#${hit.id})`);
-    const dl = await ghGet(hit.archive_download_url, "application/octet-stream");
-    if (dl.status !== 200) { console.error("Download failed", dl.status); continue; }
-    fs.writeFileSync(zipPath, dl.body);
+    for (const a of data.artifacts) {
+      if (a.name === name) {
+        if (!newest || new Date(a.created_at) > new Date(newest.created_at)) newest = a;
+      }
+    }
+    if (data.artifacts.length < perPage) break;
+    page++;
+  }
+  return newest;
+}
 
-    log(`Unpack → ${destDir}`);
-    const ok = unzipUsingSystem(zipPath, destDir);
-    if (!ok) unzipUsingLib(zipPath, destDir);
+async function downloadArtifactZip(artifactId, outPath) {
+  const { url } = await octokit.request("GET /repos/{owner}/{repo}/actions/artifacts/{artifact_id}/{archive_format}", {
+    owner: OWNER,
+    repo: REPO,
+    artifact_id: artifactId,
+    archive_format: "zip"
+  });
+  // Octokit returns the final buffer with .data for this endpoint too:
+  const res = await octokit.request("GET " + url, { request: { decompress: false } });
+  fs.writeFileSync(outPath, Buffer.from(res.data));
+}
+
+async function main() {
+  const items = readManifest();
+  if (!fs.existsSync(SBOMS_DIR)) fs.mkdirSync(SBOMS_DIR, { recursive: true });
+
+  for (const { name, dataset } of items) {
+    if (!name || !dataset) {
+      console.warn(`Skipping invalid manifest entry: ${JSON.stringify({ name, dataset })}`);
+      continue;
+    }
+    console.log(`\nLooking for artifact: ${name}`);
+    const artifact = await findArtifactByName(name);
+    if (!artifact) {
+      console.error(`Not found: ${name}. Is it expired or named differently?`);
+      continue;
+    }
+    if (artifact.expired) {
+      console.error(`Artifact expired: ${name}. Re-run Nightingale to recreate it.`);
+      continue;
+    }
+
+    const tmpZip = path.join(ROOT, `${name}.zip`);
+    console.log(`Downloading artifact #${artifact.id} → ${tmpZip}`);
+    await downloadArtifactZip(artifact.id, tmpZip);
+
+    // Unzip into sboms/<dataset>/
+    const targetDir = path.join(SBOMS_DIR, dataset);
+    if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
+
+    // Clean target dir first (optional, keeps it tidy)
+    for (const f of fs.readdirSync(targetDir)) {
+      fs.rmSync(path.join(targetDir, f), { recursive: true, force: true });
+    }
+
+    console.log(`Unzipping → ${targetDir}`);
+    const zip = new AdmZip(tmpZip);
+    zip.extractAllTo(targetDir, true);
+
+    // We only need CycloneDX JSON files under each dataset
+    // Common names from your Trivy step: sbom-<IMAGE_NAME>.cyclonedx.json inside the zip.
+    const files = fs.readdirSync(targetDir).filter(f => f.endsWith(".cyclonedx.json"));
+    if (!files.length) {
+      console.warn(`No *.cyclonedx.json found in ${name}.zip (check your Trivy step output).`);
+    } else {
+      console.log(`Found: ${files.join(", ")}`);
+    }
+
+    // Remove the temp zip
+    fs.rmSync(tmpZip, { force: true });
   }
 
-  log("Sync complete.");
-})();
+  console.log("\nSync complete.");
+}
+
+main().catch(err => {
+  console.error("Sync failed:", err);
+  process.exit(1);
+});

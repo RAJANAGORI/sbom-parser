@@ -1,16 +1,12 @@
 {
-  "name": "sbom-parser",
-  "version": "1.0.0",
-  "description": "",
-  "main": "parse-sbom.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
-    "adm-zip": "^0.5.16"
+    "@octokit/rest": "^20.1.0",
+    "adm-zip": "^0.5.10",
+    "glob": "^10.3.10"
+  },
+  "scripts": {
+    "sync:sboms": "node scripts/fetch-artifacts.js",
+    "build:ui": "node parse-sbom.js",
+    "serve": "npx http-server -c-1 -p 8080"
   }
 }
