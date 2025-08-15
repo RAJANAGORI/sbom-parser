@@ -29,7 +29,7 @@
   }
   function chip(text) { return `<span class="chip">${esc(text)}</span>` }
   async function jget(path) { const r=await fetch(path,{cache:'no-store'}); if(!r.ok) throw new Error(`${path}: ${r.status}`); return r.json(); }
-  const get = (o,p,d=null)=>p.split('.').reduce((x,k)=>(x&&k in x?x[k]:d),o);
+  const get = (o, p, d = null) => p.split('.').reduce((x, k) => (x && typeof x === 'object' && k in x ? x[k] : d), o)('.').reduce((x,k)=>(x&&k in x?x[k]:d),o);
   function inc(map, key) { if (!key) return; map.set(key, (map.get(key) || 0) + 1); }
 
   // Normalize models
