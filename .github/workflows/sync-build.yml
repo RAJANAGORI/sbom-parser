@@ -52,7 +52,7 @@ jobs:
 
       - name: Sync SBOM artifacts from Nightingale
         env:
-          GH_TOKEN: ${{ secrets.TOKEN_SBOM }}
+          GH_TOKEN: ${{ secrets.TOKEN }}
         run: npm run sync:sboms
 
       - name: Build static UI
