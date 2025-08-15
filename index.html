@@ -1,280 +1,187 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>SBOM Explorer</title>
-
-  <!-- Tailwind (CDN) -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            critical: "#ef4444",
-            high: "#f97316",
-            medium: "#eab308",
-            low: "#22c55e",
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SBOM Explorer</title>
+    <meta name="description" content="Beautiful, fast SBOM viewer for CycloneDX JSON with history and vulnerability context." />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      // Tailwind config: fine-tuned, but small
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: { sans: ['Inter', 'ui-sans-serif', 'system-ui'] },
+            colors: {
+              ink: '#0f172a',
+              stone: '#334155',
+              brand: { 50:'#eef2ff', 400:'#818cf8', 500:'#6366f1', 600:'#4f46e5', 700:'#4338ca' },
+              ok:'#10b981', warn:'#f59e0b', bad:'#ef4444'
+            },
+            boxShadow: {
+              'soft': '0 10px 30px -12px rgba(2,6,23,.15)'
+            }
           }
         }
       }
-    }
-  </script>
-
-  <!-- Icons -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-
-  <!-- Chart.js for donut + tiny trends -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-
-  <style>
-    html,body{font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji";}
-    .badge { @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium; }
-    .badge-critical { @apply bg-red-50 text-red-700 ring-1 ring-inset ring-red-200; }
-    .badge-high { @apply bg-orange-50 text-orange-700 ring-1 ring-inset ring-orange-200; }
-    .badge-medium { @apply bg-yellow-50 text-yellow-800 ring-1 ring-inset ring-yellow-200; }
-    .badge-low { @apply bg-green-50 text-green-700 ring-1 ring-inset ring-green-200; }
-    .btn { @apply inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 shadow-sm; }
-    .btn-primary { @apply bg-slate-900 text-white border-slate-900 hover:bg-black; }
-    .chip { @apply inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium cursor-pointer select-none; }
-    .chip-active { @apply bg-slate-900 text-white border-slate-900; }
-    .tab { @apply px-4 py-2 text-sm font-medium rounded-lg cursor-pointer; }
-    .tab-active { @apply bg-slate-900 text-white; }
-    .card { @apply rounded-2xl border border-slate-200 bg-white shadow-sm; }
-    .grid-auto { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap: 1rem; }
-  </style>
-</head>
-
-<body class="bg-slate-50 text-slate-900">
-  <!-- Top bar -->
-  <header class="sticky top-0 z-30 border-b border-slate-200 bg-white/80 backdrop-blur">
-    <div class="mx-auto max-w-7xl px-4 py-3 flex items-center justify-between">
-      <div class="flex items-center gap-3">
-        <span class="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-slate-900 text-white font-bold">S</span>
-        <h1 class="text-lg font-semibold tracking-tight">SBOM Explorer</h1>
-      </div>
-      <div class="flex items-center gap-2">
-        <button id="exportCsvBtn" class="btn" title="Export filtered vulnerabilities to CSV">Export CSV</button>
-        <button id="saveViewBtn" class="btn" title="Save current filters">Save View</button>
-        <button id="loadViewBtn" class="btn" title="Load saved filters">Load View</button>
-      </div>
-    </div>
-  </header>
-
-  <!-- Filters -->
-  <section class="mx-auto max-w-7xl px-4 py-4">
-    <div class="card p-4">
-      <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <div class="flex flex-1 flex-col gap-2 md:max-w-xl">
-          <label class="text-xs font-medium text-slate-500">Search (component, purl, vuln id, license)</label>
-          <input id="searchInput" type="search" placeholder="Search…" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300">
-        </div>
-
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+    </script>
+    <style>
+      html,body{height:100%}
+      ::selection{background:#c7d2fe;color:#111827}
+      .chip{ @apply inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200;}
+      .kpi{ @apply rounded-2xl p-4 bg-white shadow-soft border border-slate-100;}
+      .card{ @apply rounded-2xl bg-white shadow-soft border border-slate-100;}
+      .btn{ @apply inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold border border-slate-200 hover:bg-slate-50;}
+      .tab{ @apply cursor-pointer px-3 py-2 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100;}
+      .tab-active{ @apply bg-ink text-white hover:bg-ink hover:text-white;}
+      .mono{ font-variant-ligatures:none; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;}
+      .pill{ @apply text-xs px-2.5 py-1 rounded-full font-semibold;}
+      .pill-ok{ @apply bg-green-50 text-green-700 border border-green-200;}
+      .pill-warn{ @apply bg-amber-50 text-amber-700 border border-amber-200;}
+      .pill-bad{ @apply bg-red-50 text-red-700 border border-red-200;}
+      .tbl th{ @apply sticky top-0 z-10 bg-slate-50/90 backdrop-blur text-left text-xs font-semibold text-slate-600 uppercase tracking-wide border-b px-3 py-2;}
+      .tbl td{ @apply align-top whitespace-pre-wrap px-3 py-2 border-b; }
+      .tbl tr:hover td{ @apply bg-slate-50;}
+      .srch{ @apply w-full rounded-xl border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-400;}
+      .fade-in{ animation:fade .3s ease-in-out;}
+      @keyframes fade{ from{opacity:0; transform: translateY(4px)} to{opacity:1; transform: none} }
+    </style>
+  </head>
+  <body class="bg-slate-50 text-slate-900">
+    <header class="sticky top-0 z-40 bg-white/80 backdrop-blur border-b border-slate-100">
+      <div class="mx-auto max-w-7xl px-4 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="h-9 w-9 rounded-xl bg-brand-600 grid place-items-center text-white font-extrabold">S</div>
           <div>
-            <label class="text-xs font-medium text-slate-500">Datasets</label>
-            <select id="datasetSelect" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm">
-              <option value="">All datasets</option>
-            </select>
-          </div>
-          <div>
-            <label class="text-xs font-medium text-slate-500">Severity</label>
-            <select id="severitySelect" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm">
-              <option value="">All severities</option>
-              <option value="critical">Critical</option>
-              <option value="high">High</option>
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
-            </select>
-          </div>
-          <div>
-            <label class="text-xs font-medium text-slate-500">Fix status</label>
-            <select id="fixSelect" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm">
-              <option value="">Any</option>
-              <option value="hasfix">Has fix</option>
-              <option value="nofix">No fix</option>
-            </select>
-          </div>
-          <div>
-            <label class="text-xs font-medium text-slate-500">CVSS ≥</label>
-            <input id="cvssMinInput" type="number" step="0.1" min="0" max="10" value="0" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm">
+            <h1 class="text-xl font-extrabold leading-tight">SBOM Explorer</h1>
+            <p id="subtitle" class="text-xs text-slate-500">Loading index…</p>
           </div>
         </div>
-
-        <label class="inline-flex items-center gap-2 self-start md:self-auto">
-          <input id="onlyDirectChk" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-500">
-          <span class="text-sm">Only direct</span>
-        </label>
-      </div>
-
-      <!-- quick chips -->
-      <div class="mt-3 flex flex-wrap gap-2">
-        <span data-chip="critical" class="chip">Critical</span>
-        <span data-chip="high" class="chip">High</span>
-        <span data-chip="hasfix" class="chip">Has Fix</span>
-        <span data-chip="direct" class="chip">Direct</span>
-        <button id="resetBtn" class="ml-auto btn">Reset</button>
-      </div>
-    </div>
-  </section>
-
-  <!-- KPIs -->
-  <section class="mx-auto max-w-7xl px-4">
-    <div class="grid-auto">
-      <div class="card p-4">
-        <p class="text-xs text-slate-500">Total Vulnerabilities</p>
-        <p id="kpiTotal" class="mt-1 text-3xl font-semibold">0</p>
-      </div>
-      <div class="card p-4">
-        <p class="text-xs text-slate-500">Severity distribution</p>
-        <div class="mt-2 h-36">
-          <canvas id="severityPie"></canvas>
-        </div>
-        <div class="mt-3 flex gap-2 text-xs">
-          <span class="badge badge-critical">Critical <span id="kpiCritical" class="ml-1 font-semibold">0</span></span>
-          <span class="badge badge-high">High <span id="kpiHigh" class="ml-1 font-semibold">0</span></span>
-          <span class="badge badge-medium">Medium <span id="kpiMedium" class="ml-1 font-semibold">0</span></span>
-          <span class="badge badge-low">Low <span id="kpiLow" class="ml-1 font-semibold">0</span></span>
+        <div class="flex items-center gap-2">
+          <a class="btn" href="public/sbom-index.json" target="_blank" rel="noreferrer">sbom-index.json</a>
+          <a class="btn" href="public/history.json" target="_blank" rel="noreferrer">history.json</a>
+          <a class="btn" href="public/tracker.json" target="_blank" rel="noreferrer">tracker.json</a>
+          <a class="btn" href="sboms/manifest.json" target="_blank" rel="noreferrer">manifest.json</a>
+          <a id="downloadBtn" class="btn hidden" rel="noreferrer">Download view</a>
         </div>
       </div>
-      <div class="card p-4">
-        <p class="text-xs text-slate-500">Fix availability rate</p>
-        <p class="mt-1 text-3xl font-semibold"><span id="kpiFixRate">0</span>%</p>
-        <p class="mt-2 text-xs text-slate-500">% of current vulns with known fixes</p>
-      </div>
-      <div class="card p-4">
-        <p class="text-xs text-slate-500">Median time to fix</p>
-        <p id="kpiMTTR" class="mt-1 text-2xl font-semibold">—</p>
-        <p class="mt-2 text-xs text-slate-500">Across vulns that disappeared since first seen</p>
-      </div>
-      <div class="card p-4">
-        <p class="text-xs text-slate-500">Median open age</p>
-        <p id="kpiOpenAge" class="mt-1 text-2xl font-semibold">0 days</p>
-        <p class="mt-2 text-xs text-slate-500">How long current vulns have been present</p>
-      </div>
-    </div>
-  </section>
+    </header>
 
-  <!-- Top CVEs -->
-  <section class="mx-auto max-w-7xl px-4 py-4">
-    <div class="card p-4">
-      <div class="flex items-center justify-between">
-        <h2 class="text-base font-semibold">Top CVEs (by severity & count)</h2>
-        <button id="clearCveFilter" class="btn text-xs">Clear</button>
-      </div>
-      <ul id="topCvesList" class="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3"></ul>
-    </div>
-  </section>
+    <main class="mx-auto max-w-7xl px-4 py-6 grid gap-6">
+      <!-- KPI STRIP -->
+      <section id="kpis" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"></section>
 
-  <!-- Tabs -->
-  <section class="mx-auto max-w-7xl px-4">
-    <div class="flex gap-2">
-      <button data-tab="vulns" class="tab tab-active">Vulnerabilities</button>
-      <button data-tab="components" class="tab">Components</button>
-      <button data-tab="compare" class="tab">Compare datasets</button>
-    </div>
+      <!-- Tabs -->
+      <nav class="flex gap-2">
+        <button data-tab="overview" class="tab tab-active">Overview</button>
+        <button data-tab="components" class="tab">Components</button>
+        <button data-tab="vulns" class="tab">Vulnerabilities</button>
+        <button data-tab="history" class="tab">History</button>
+        <button data-tab="files" class="tab">Files</button>
+      </nav>
 
-    <!-- Vulns table -->
-    <div id="tab-vulns" class="mt-4 card overflow-hidden">
-      <div class="overflow-x-auto">
-        <table class="min-w-full text-sm">
-          <thead class="bg-slate-50 text-left text-slate-600">
-            <tr>
-              <th class="px-4 py-2">Severity</th>
-              <th class="px-4 py-2">CVSS</th>
-              <th class="px-4 py-2">Component</th>
-              <th class="px-4 py-2">Version</th>
-              <th class="px-4 py-2">License</th>
-              <th class="px-4 py-2">Vuln ID</th>
-              <th class="px-4 py-2">Dataset</th>
-              <th class="px-4 py-2">Links</th>
-              <th class="px-4 py-2">first seen</th>
-              <th class="px-4 py-2">direct — refs</th>
-            </tr>
-          </thead>
-          <tbody id="vulnTbody" class="divide-y divide-slate-100 bg-white"></tbody>
-        </table>
-      </div>
-
-      <div class="flex items-center justify-between border-t px-4 py-3 text-sm">
-        <div>Page <span id="pageNum">1</span> / <span id="pageCount">1</span></div>
-        <div class="flex gap-2">
-          <button id="prevPageBtn" class="btn">Prev</button>
-          <button id="nextPageBtn" class="btn">Next</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Components table -->
-    <div id="tab-components" class="mt-4 hidden">
-      <div class="card overflow-hidden">
-        <div class="overflow-x-auto">
-          <table class="min-w-full text-sm">
-            <thead class="bg-slate-50 text-left text-slate-600">
-              <tr>
-                <th class="px-4 py-2">Component</th>
-                <th class="px-4 py-2">Worst Severity</th>
-                <th class="px-4 py-2">Max CVSS</th>
-                <th class="px-4 py-2">Vuln Count</th>
-                <th class="px-4 py-2">Datasets</th>
-                <th class="px-4 py-2">Licenses</th>
-              </tr>
-            </thead>
-            <tbody id="compTbody" class="divide-y divide-slate-100 bg-white"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <!-- Compare -->
-    <div id="tab-compare" class="mt-4 hidden">
-      <div class="card p-4">
-        <div class="grid gap-3 sm:grid-cols-3">
-          <select id="cmpA" class="rounded-xl border border-slate-300 px-3 py-2 text-sm"><option value="">Pick Dataset A</option></select>
-          <select id="cmpB" class="rounded-xl border border-slate-300 px-3 py-2 text-sm"><option value="">Pick Dataset B</option></select>
-          <button id="runCompareBtn" class="btn">Compare</button>
-        </div>
-
-        <div class="mt-4 grid gap-4 lg:grid-cols-3">
-          <div class="card p-4">
-            <p class="text-xs text-slate-500">Total:</p>
-            <p class="text-2xl font-semibold" id="cmpTotalA">0</p>
-            <p class="mt-2 text-xs text-slate-500" id="cmpBreakA"></p>
-          </div>
-          <div class="card p-4">
-            <p class="text-xs text-slate-500">Total:</p>
-            <p class="text-2xl font-semibold" id="cmpTotalB">0</p>
-            <p class="mt-2 text-xs text-slate-500" id="cmpBreakB"></p>
-          </div>
-          <div class="card p-4">
-            <p class="text-xs text-slate-500">Delta (B − A)</p>
-            <p class="text-2xl font-semibold" id="cmpDelta">0</p>
-            <div class="mt-2 text-xs text-slate-500 grid gap-1">
-              <div>Only in <span id="cmpOnlyBLabel" class="font-medium">B</span></div>
-              <ul id="cmpOnlyB" class="list-disc pl-4"></ul>
-              <div class="mt-2">Only in <span id="cmpOnlyALabel" class="font-medium">A</span></div>
-              <ul id="cmpOnlyA" class="list-disc pl-4"></ul>
+      <!-- Overview -->
+      <section id="tab-overview" class="card p-5 fade-in">
+        <div class="grid gap-6 lg:grid-cols-3">
+          <div class="lg:col-span-2 grid gap-4">
+            <div class="card p-4">
+              <h2 class="text-lg font-bold mb-2">Current SBOMs</h2>
+              <div id="sbomList" class="grid gap-3"></div>
+            </div>
+            <div class="card p-4">
+              <h2 class="text-lg font-bold mb-2">Metadata</h2>
+              <dl id="metaList" class="grid grid-cols-1 sm:grid-cols-2 gap-y-2 gap-x-6"></dl>
             </div>
           </div>
+          <aside class="card p-4">
+            <h3 class="text-lg font-bold mb-3">Quick filters</h3>
+            <div class="grid gap-3">
+              <input id="quickSearch" class="srch" type="search" placeholder="Search name, purl, license… (press ⏎)" />
+              <div class="flex flex-wrap gap-2" id="licenseCloud"></div>
+              <div class="flex flex-wrap gap-2" id="vendorCloud"></div>
+            </div>
+          </aside>
         </div>
-      </div>
-    </div>
-  </section>
+      </section>
 
-  <!-- Details drawer -->
-  <div id="detailDrawer" class="fixed inset-0 z-40 hidden">
-    <div class="absolute inset-0 bg-black/30" data-dismiss="drawer"></div>
-    <aside class="absolute right-0 top-0 h-full w-full max-w-xl bg-white shadow-xl p-5 overflow-y-auto">
-      <div class="flex items-center justify-between">
-        <h3 id="detailTitle" class="text-lg font-semibold">Vulnerability</h3>
-        <button class="btn" data-dismiss="drawer">Close</button>
-      </div>
-      <div id="detailBody" class="mt-4 text-sm space-y-3"></div>
-    </aside>
-  </div>
+      <!-- Components -->
+      <section id="tab-components" class="card p-0 hidden fade-in">
+        <div class="p-4 flex items-center justify-between gap-3 flex-wrap">
+          <div class="flex items-center gap-2">
+            <input id="compSearch" class="srch" type="search" placeholder="Filter components…" />
+            <span id="compCount" class="chip">0</span>
+          </div>
+          <div class="flex items-center gap-2 text-sm">
+            <label class="flex items-center gap-2"><input id="toggleDev" type="checkbox"/> <span>Include dev/test</span></label>
+            <label class="flex items-center gap-2"><input id="toggleNoLicense" type="checkbox"/> <span>Only with license</span></label>
+          </div>
+        </div>
+        <div class="overflow-auto">
+          <table class="tbl w-full">
+            <thead>
+              <tr>
+                <th class="w-[20%]">Name</th>
+                <th>Version</th>
+                <th class="w-[18%]">PURL</th>
+                <th class="w-[14%]">License</th>
+                <th class="w-[14%]">Supplier</th>
+                <th class="w-[10%]">Scope</th>
+              </tr>
+            </thead>
+            <tbody id="componentsBody"></tbody>
+          </table>
+        </div>
+      </section>
 
-  <script src="./parse-sbom.js"></script>
-</body>
+      <!-- Vulnerabilities -->
+      <section id="tab-vulns" class="card p-0 hidden fade-in">
+        <div class="p-4 flex items-center justify-between gap-3 flex-wrap">
+          <input id="vulnSearch" class="srch" type="search" placeholder="Filter vulnerabilities…" />
+          <span id="vulnCount" class="chip">0</span>
+        </div>
+        <div class="overflow-auto">
+          <table class="tbl w-full">
+            <thead>
+              <tr>
+                <th class="w-[18%]">ID</th>
+                <th class="w-[12%]">Severity</th>
+                <th class="w-[16%]">Affects</th>
+                <th class="w-[14%]">Version Range</th>
+                <th class="w-[40%]">Description</th>
+              </tr>
+            </thead>
+            <tbody id="vulnsBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- History -->
+      <section id="tab-history" class="card p-4 hidden fade-in">
+        <div id="history" class="grid gap-4"></div>
+      </section>
+
+      <!-- Files -->
+      <section id="tab-files" class="card p-4 hidden fade-in">
+        <div class="grid md:grid-cols-2 gap-6">
+          <div>
+            <h3 class="text-lg font-bold mb-2">public/</h3>
+            <div id="publicFiles" class="grid gap-2"></div>
+          </div>
+          <div>
+            <h3 class="text-lg font-bold mb-2">sboms/</h3>
+            <div id="sbomFiles" class="grid gap-2"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="mx-auto max-w-7xl px-4 pb-10 text-center text-xs text-slate-500">
+      Built for <a class="underline" href="https://github.com/Sidbhasin13/sbom-parser" target="_blank" rel="noreferrer">sbom-parser</a> — zero backend, just JSON.
+    </footer>
+
+    <script src="parse-sbom.js"></script>
+  </body>
 </html>

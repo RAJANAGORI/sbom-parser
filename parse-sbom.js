@@ -1,545 +1,357 @@
-/* global Chart */
-(() => {
-  // --------------------------- Utilities & State ---------------------------
-  const $ = sel => document.querySelector(sel);
-  const $$ = sel => [...document.querySelectorAll(sel)];
-  const fmt = n => n.toLocaleString();
-  const qs = new URLSearchParams(location.hash.replace(/^#/, ''));
+/* parse-sbom.js
+ * Ultra-fast SBOM Explorer: fetches your /public/*.json + CycloneDX SBOMs
+ * and renders a delightful UI. Drop next to index.html.
+ */
+
+(function () {
   const state = {
-    datasets: new Map(),       // name -> { vulns:[], comps: Map(), raw }
-    allVulns: [],              // flattened with dataset attribution
-    filters: {
-      q: qs.get('q') || '',
-      ds: qs.get('ds') || '',      // dataset name
-      sev: qs.get('sev') || '',    // critical|high|medium|low
-      fix: qs.get('fix') || '',    // hasfix|nofix
-      cvss: Number(qs.get('cvss') || 0),
-      onlyDirect: qs.get('dir') === '1' || false,
-      tab: qs.get('tab') || 'vulns',
-      page: Number(qs.get('page') || 1),
-    },
-    charts: { pie: null },
-    pageSize: 50,
+    index: null,
+    history: [],
+    tracker: { vulns: [] },
+    manifest: null,
+    sboms: [],           // raw CycloneDX docs
+    components: [],      // normalized components across SBOMs
+    vulns: [],           // normalized vulns (from SBOMs or tracker)
+    vendors: new Map(),  // name -> count
+    licenses: new Map(), // id -> count
   };
 
-  function setHash() {
-    const h = new URLSearchParams({
-      tab: state.filters.tab,
-      q: state.filters.q,
-      ds: state.filters.ds,
-      sev: state.filters.sev,
-      fix: state.filters.fix,
-      cvss: String(state.filters.cvss || 0),
-      dir: state.filters.onlyDirect ? '1' : '0',
-      page: String(state.filters.page),
-    });
-    history.replaceState(null, '', `#${h.toString()}`);
+  // ---------- Utilities ----------
+  const $ = (sel) => document.querySelector(sel);
+  const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+  const esc = (s) => (s == null ? "" : String(s));
+  const uniq = (arr) => Array.from(new Set(arr.filter(Boolean)));
+  const by = (k) => (a, b) => esc(a[k]).localeCompare(esc(b[k]));
+  const fmt = new Intl.NumberFormat();
+
+  const setSubtitle = (t) => ($("#subtitle").textContent = t);
+
+  function pill(text, tone='ok') {
+    const cx = tone === 'bad' ? 'pill-bad' : tone === 'warn' ? 'pill-warn' : 'pill-ok';
+    return `<span class="pill ${cx}">${esc(text)}</span>`;
   }
 
-  function toBadge(sev) {
-    const s = String(sev || '').toLowerCase();
-    const map = { critical: 'badge-critical', high: 'badge-high', medium: 'badge-medium', low: 'badge-low' };
-    const label = s ? s[0].toUpperCase() + s.slice(1) : '—';
-    return `<span class="badge ${map[s] || 'bg-slate-100 text-slate-700 ring-1 ring-inset ring-slate-200'}">${label}</span>`;
+  function chip(text) { return `<span class="chip">${esc(text)}</span>` }
+
+  function copyToClipboard(text) {
+    navigator.clipboard?.writeText(text).catch(()=>{});
   }
 
-  function bestRating(v) {
-    const ratings = v.ratings || v.score ? [{ severity: v.severity, score: v.score }] : [];
-    const r = (v.ratings || ratings || []).reduce((acc, cur) => {
-      const score = Number(cur.score || cur.baseScore || 0);
-      const sev = (cur.severity || '').toLowerCase();
-      if (!acc || score > acc.score) return { score, severity: sev };
-      return acc;
-    }, null);
-    return r || { score: 0, severity: '' };
-  }
-
-  function hasFix(v) {
-    // heuristics across CycloneDX properties and advisories
-    if (v.analysis && /resolved|fixed/i.test(v.analysis.state || '')) return true;
-    if (Array.isArray(v.properties)) {
-      if (v.properties.some(p => /fix|fixed|upgrade|patched|version/i.test((p.value || '') + (p.name || '')))) return true;
-    }
-    if (typeof v.recommendation === 'string' && /upgrade|update|patch/i.test(v.recommendation)) return true;
-    if (Array.isArray(v.advisories)) {
-      if (v.advisories.some(a => /fix|patch|upgrade/i.test(a.url || ''))) return true;
-    }
-    return false;
-  }
-
-  function firstDate(v) {
-    const candidates = [v.created, v.published, v.updated, v.timestamp, v.introduced];
-    const d = candidates.map(x => x && new Date(x)).find(d => d && !isNaN(d));
-    return d || null;
-  }
-
-  function ageDays(d) {
-    if (!d) return 0;
-    return Math.max(0, Math.round((Date.now() - d.getTime()) / 86400000));
-    // 86_400_000 ms/day
-  }
-
-  // --------------------------- Data Loading ---------------------------
-  async function loadDatasets() {
-    // datasets from URL: ds=a.json,b.json (relative to /sboms/). if empty, try to auto-add from public sample listing.
-    const dsParam = (state.filters.ds || '').trim();
-    const list = dsParam ? dsParam.split(',').map(s => s.trim()).filter(Boolean) : [];
-    if (list.length === 0) {
-      // Try a default sample if exists; this is safe even if 404 (we just move on)
-      await tryLoad('/sboms/sample.json', 'sample');
-    }
-    for (const item of list) {
-      const path = item.match(/\.json$/i) ? `/sboms/${item}` : `/sboms/${item}.json`;
-      await tryLoad(path, item.replace(/\.json$/i, ''));
-    }
-    if (state.datasets.size === 0) {
-      // allow user to drag&drop later; but render empty UI
-      renderAll();
-    }
-  }
-
-  async function tryLoad(url, name) {
-    try {
-      const res = await fetch(url, { cache: 'no-store' });
-      if (!res.ok) return;
-      const json = await res.json();
-      addDatasetFromCycloneDX(json, name);
-    } catch (_) { /* ignore */ }
-  }
-
-  function addDatasetFromCycloneDX(bom, dataset) {
-    // build components map
-    const comps = new Map();
-    (bom.components || []).forEach(c => {
-      const id = c.bomRef || c['bom-ref'] || c.purl || `${c.name || 'component'}@${c.version || ''}`;
-      comps.set(id, {
-        id,
-        name: c.name || c.purl || id,
-        version: c.version || '',
-        license: extractLicense(c),
-        scope: c.scope || '',
-        isDirect: !c.scope || /required|runtime|compile/i.test(c.scope), // heuristic
-      });
-    });
-
-    // flatten vulnerabilities
-    const flattened = [];
-    (bom.vulnerabilities || []).forEach(v => {
-      const rating = bestRating(v);
-      const fix = hasFix(v);
-      const published = firstDate(v);
-      const links = collectLinks(v);
-      const affects = (v.affects || v.affectsComponents || []).map(a => a.ref || a['ref'] || a.bomRef || a.purl).filter(Boolean);
-
-      if (affects.length === 0) affects.push(null); // record as "global" if no mapping given
-
-      affects.forEach(ref => {
-        const comp = ref ? comps.get(ref) || guessByRef(comps, ref) : null;
-        flattened.push({
-          id: v.id || v.cve || v.source?.name || 'UNKNOWN',
-          severity: rating.severity || inferSeverity(rating.score),
-          score: rating.score || 0,
-          dataset,
-          component: comp?.name || ref || '—',
-          version: comp?.version || '—',
-          license: comp?.license || '—',
-          isDirect: comp?.isDirect ?? true,
-          refsCount: (v.references || v.advisories || []).length,
-          links,
-          published,
-          openAgeDays: ageDays(published),
-          raw: v,
-        });
-      });
-    });
-
-    state.datasets.set(dataset, { vulns: flattened, comps, raw: bom });
-    rebuildAllVulns();
-    refreshDatasetPickers();
-  }
-
-  function extractLicense(c) {
-    try {
-      const l = c.licenses?.[0];
-      if (!l) return '—';
-      if (l.license?.id) return l.license.id;
-      if (l.license?.name) return l.license.name;
-      if (l.expression) return l.expression;
-    } catch (_) { /* noop */ }
-    return '—';
-  }
-
-  function collectLinks(v) {
-    const out = [];
-    if (v.source?.url) out.push(v.source.url);
-    if (Array.isArray(v.references)) v.references.forEach(r => r.url && out.push(r.url));
-    if (Array.isArray(v.advisories)) v.advisories.forEach(a => a.url && out.push(a.url));
-    if (v.url) out.push(v.url);
-    return [...new Set(out)];
-  }
-
-  function guessByRef(map, ref) {
-    // Try to match by purl suffix or name
-    const arr = [...map.values()];
-    return arr.find(c => c.id === ref || c.name === ref || (c.id && String(c.id).includes(ref))) || null;
-  }
-
-  function inferSeverity(score) {
-    const s = Number(score || 0);
-    if (s >= 9.0) return 'critical';
-    if (s >= 7.0) return 'high';
-    if (s >= 4.0) return 'medium';
-    if (s > 0) return 'low';
-    return '';
-  }
-
-  function rebuildAllVulns() {
-    state.allVulns = [...state.datasets.values()].flatMap(d => d.vulns.map(v => ({ ...v })));
-    renderAll();
-  }
-
-  function refreshDatasetPickers() {
-    const names = [...state.datasets.keys()];
-    const dsSel = $('#datasetSelect');
-    const cmpA = $('#cmpA');
-    const cmpB = $('#cmpB');
-    [dsSel, cmpA, cmpB].forEach(sel => {
-      if (!sel) return;
-      const current = sel.value;
-      sel.innerHTML = `<option value="">${sel === dsSel ? 'All datasets' : 'Pick Dataset ' + (sel === cmpA ? 'A' : 'B')}</option>` +
-        names.map(n => `<option value="${n}">${n}</option>`).join('');
-      if (names.includes(current)) sel.value = current;
-    });
-  }
-
-  // --------------------------- Filtering & Derivations ---------------------------
-  function getFiltered() {
-    const f = state.filters;
-    let rows = state.allVulns;
-
-    if (f.q) {
-      const q = f.q.toLowerCase();
-      rows = rows.filter(r =>
-        r.id.toLowerCase().includes(q) ||
-        String(r.component).toLowerCase().includes(q) ||
-        String(r.license).toLowerCase().includes(q) ||
-        String(r.version).toLowerCase().includes(q)
-      );
-    }
-    if (f.ds) rows = rows.filter(r => r.dataset === f.ds);
-    if (f.sev) rows = rows.filter(r => r.severity === f.sev);
-    if (f.fix === 'hasfix') rows = rows.filter(r => hasFix(r.raw));
-    if (f.fix === 'nofix') rows = rows.filter(r => !hasFix(r.raw));
-    if (f.cvss) rows = rows.filter(r => Number(r.score) >= Number(f.cvss));
-    if (f.onlyDirect) rows = rows.filter(r => !!r.isDirect);
-
-    return rows;
-  }
-
-  function severityBuckets(rows) {
-    const buckets = { critical: 0, high: 0, medium: 0, low: 0 };
-    rows.forEach(r => {
-      const s = (r.severity || '').toLowerCase();
-      if (buckets[s] !== undefined) buckets[s]++;
-    });
-    return buckets;
-  }
-
-  function fixRate(rows) {
-    if (rows.length === 0) return 0;
-    const fixed = rows.filter(r => hasFix(r.raw)).length;
-    return Math.round((fixed / rows.length) * 100);
-  }
-
-  function medianOpenAge(rows) {
-    const days = rows.map(r => r.openAgeDays || 0).filter(n => Number.isFinite(n));
-    if (days.length === 0) return 0;
-    days.sort((a,b)=>a-b);
-    const mid = Math.floor(days.length / 2);
-    return days.length % 2 ? days[mid] : Math.round((days[mid - 1] + days[mid]) / 2);
-  }
-
-  // --------------------------- Rendering ---------------------------
-  function renderAll() {
-    const rows = getFiltered();
-
-    // KPIs
-    $('#kpiTotal').textContent = fmt(rows.length);
-    const b = severityBuckets(rows);
-    $('#kpiCritical').textContent = fmt(b.critical);
-    $('#kpiHigh').textContent = fmt(b.high);
-    $('#kpiMedium').textContent = fmt(b.medium);
-    $('#kpiLow').textContent = fmt(b.low);
-    $('#kpiFixRate').textContent = fmt(fixRate(rows));
-    $('#kpiOpenAge').textContent = `${fmt(medianOpenAge(rows))} days`;
-
-    // Chart
-    renderSeverityPie(b);
-
-    // Top CVEs
-    renderTopCves(rows);
-
-    // Tables
-    renderVulnTable(rows);
-    renderComponentsTable(rows);
-  }
-
-  function renderSeverityPie(b) {
-    const data = [b.critical, b.high, b.medium, b.low];
-    const ctx = $('#severityPie');
-    if (!ctx) return;
-    if (state.charts.pie) state.charts.pie.destroy();
-    state.charts.pie = new Chart(ctx, {
-      type: 'doughnut',
-      data: {
-        labels: ['Critical', 'High', 'Medium', 'Low'],
-        datasets: [{ data }]
-      },
-      options: { plugins: { legend: { display: false } }, cutout: '70%' }
-    });
-  }
-
-  function renderTopCves(rows) {
-    const bucket = new Map(); // id -> {count, worstSev, maxScore, datasets:Set}
-    rows.forEach(r => {
-      const rec = bucket.get(r.id) || { count: 0, worstSev: r.severity, maxScore: r.score, datasets: new Set() };
-      rec.count++;
-      rec.maxScore = Math.max(rec.maxScore, Number(r.score || 0));
-      rec.worstSev = worseSev(rec.worstSev, r.severity);
-      rec.datasets.add(r.dataset);
-      bucket.set(r.id, rec);
-    });
-    const top = [...bucket.entries()]
-      .sort((a,b) => sevRank(b[1].worstSev) - sevRank(a[1].worstSev) || b[1].count - a[1].count)
-      .slice(0, 12);
-
-    $('#topCvesList').innerHTML = top.map(([id,meta]) => `
-      <li class="card p-3 flex items-start gap-3">
-        <div>${toBadge(meta.worstSev)}</div>
-        <div class="flex-1">
-          <button class="text-sm font-semibold hover:underline" data-cve-filter="${id}">${id}</button>
-          <div class="mt-1 text-xs text-slate-500">Count: <b>${meta.count}</b> · Max CVSS: <b>${meta.maxScore}</b> · Datasets: <b>${meta.datasets.size}</b></div>
-        </div>
-      </li>
-    `).join('') || `<div class="text-sm text-slate-500">No CVE IDs found in current data.</div>`;
-
-    // click -> filter by this CVE id
-    $$('[data-cve-filter]').forEach(el => el.addEventListener('click', () => {
-      state.filters.q = el.getAttribute('data-cve-filter');
-      $('#searchInput').value = state.filters.q;
-      state.filters.page = 1;
-      setHash(); renderAll();
-    }));
-    $('#clearCveFilter').onclick = () => { state.filters.q = ''; $('#searchInput').value=''; setHash(); renderAll(); };
-  }
-
-  function sevRank(s) {
-    return { critical: 4, high: 3, medium: 2, low: 1 }[String(s).toLowerCase()] || 0;
-  }
-  function worseSev(a, b) { return sevRank(a) >= sevRank(b) ? a : b; }
-
-  function renderVulnTable(rows) {
-    const page = state.filters.page || 1;
-    const start = (page - 1) * state.pageSize;
-    const pageRows = rows.slice(start, start + state.pageSize);
-
-    $('#vulnTbody').innerHTML = pageRows.map(r => `
-      <tr class="hover:bg-slate-50">
-        <td class="px-4 py-2">${toBadge(r.severity)}</td>
-        <td class="px-4 py-2">${Number(r.score || 0).toFixed(1)}</td>
-        <td class="px-4 py-2">${esc(r.component)}</td>
-        <td class="px-4 py-2">${esc(r.version)}</td>
-        <td class="px-4 py-2">${esc(r.license)}</td>
-        <td class="px-4 py-2">
-          <button class="text-slate-900 hover:underline font-medium" data-open-detail="${r.id}">${esc(r.id)}</button>
-        </td>
-        <td class="px-4 py-2">${esc(r.dataset)}</td>
-        <td class="px-4 py-2">${r.links.slice(0,2).map(u => `<a class="text-slate-600 hover:text-slate-900 underline" target="_blank" href="${esc(u)}">link</a>`).join(' · ')}</td>
-        <td class="px-4 py-2 text-slate-500">${r.published ? new Date(r.published).toISOString().slice(0,10) : '—'}</td>
-        <td class="px-4 py-2 text-slate-500">${r.isDirect ? 'direct' : 'transitive'} — refs (${r.refsCount || 0})</td>
-      </tr>
-    `).join('');
-
-    const pageCount = Math.max(1, Math.ceil(rows.length / state.pageSize));
-    $('#pageNum').textContent = String(page);
-    $('#pageCount').textContent = String(pageCount);
-    $('#prevPageBtn').disabled = page <= 1;
-    $('#nextPageBtn').disabled = page >= pageCount;
-    $('#prevPageBtn').onclick = () => { if (state.filters.page > 1) { state.filters.page--; setHash(); renderAll(); } };
-    $('#nextPageBtn').onclick = () => { if (state.filters.page < pageCount) { state.filters.page++; setHash(); renderAll(); } };
-
-    // details
-    $$('[data-open-detail]').forEach(btn => btn.addEventListener('click', () => openDetail(btn.getAttribute('data-open-detail'))));
-  }
-
-  function renderComponentsTable(rows) {
-    const byComp = new Map(); // key -> {name, versions:Set, license:Set, datasets:Set, count, maxScore, worstSev}
-    rows.forEach(r => {
-      const key = `${r.component}@${r.version}`;
-      const rec = byComp.get(key) || { name: r.component, versions: new Set(), licenses: new Set(), datasets: new Set(), count: 0, maxScore: 0, worstSev: r.severity };
-      rec.count++;
-      rec.versions.add(r.version);
-      rec.licenses.add(r.license);
-      rec.datasets.add(r.dataset);
-      rec.maxScore = Math.max(rec.maxScore, Number(r.score || 0));
-      rec.worstSev = worseSev(rec.worstSev, r.severity);
-      byComp.set(key, rec);
-    });
-    $('#compTbody').innerHTML = [...byComp.values()].map(c => `
-      <tr class="hover:bg-slate-50">
-        <td class="px-4 py-2">${esc(c.name)}</td>
-        <td class="px-4 py-2">${toBadge(c.worstSev)}</td>
-        <td class="px-4 py-2">${c.maxScore.toFixed(1)}</td>
-        <td class="px-4 py-2">${fmt(c.count)}</td>
-        <td class="px-4 py-2">${fmt(c.datasets.size)}</td>
-        <td class="px-4 py-2">${esc([...c.licenses].filter(x=>x && x!=='—').slice(0,2).join(', ') || '—')}</td>
-      </tr>
-    `).join('');
-  }
-
-  function openDetail(vulnId) {
-    const rows = getFiltered().filter(r => r.id === vulnId);
-    const first = rows[0];
-    if (!first) return;
-    $('#detailTitle').textContent = first.id;
-    const list = rows.map(r => `
-      <div class="border rounded-xl p-3">
-        <div class="flex items-center justify-between">
-          <div class="font-medium">${esc(r.component)} <span class="text-slate-500">v${esc(r.version)}</span></div>
-          <div>${toBadge(r.severity)} <span class="ml-2 text-xs">CVSS ${Number(r.score || 0).toFixed(1)}</span></div>
-        </div>
-        <div class="mt-2 text-xs text-slate-600">Dataset: <b>${esc(r.dataset)}</b> · License: <b>${esc(r.license)}</b> · First seen: ${r.published ? new Date(r.published).toISOString().slice(0,10) : '—'} · ${r.isDirect?'Direct':'Transitive'}</div>
-        <div class="mt-2 flex flex-wrap gap-2">${r.links.map(u => `<a class="underline text-slate-700" target="_blank" href="${esc(u)}">${esc(host(u))}</a>`).join('')}</div>
-      </div>
-    `).join('');
-
-    $('#detailBody').innerHTML = `
-      <div class="text-sm text-slate-600">Occurrences (${rows.length})</div>
-      <div class="mt-2 space-y-2">${list}</div>
-    `;
-    $('#detailDrawer').classList.remove('hidden');
-  }
-  $$('[data-dismiss="drawer"]').forEach(b => b.addEventListener('click', () => $('#detailDrawer').classList.add('hidden')));
-
-  function host(u){try{return new URL(u).host}catch(_){return u}}
-
-  // --------------------------- Events & Controls ---------------------------
-  function wireControls() {
-    $('#searchInput').value = state.filters.q;
-    $('#severitySelect').value = state.filters.sev;
-    $('#fixSelect').value = state.filters.fix;
-    $('#cvssMinInput').value = String(state.filters.cvss || 0);
-    $('#onlyDirectChk').checked = !!state.filters.onlyDirect;
-
-    $('#searchInput').addEventListener('input', e => { state.filters.q = e.target.value; state.filters.page=1; setHash(); renderAll(); });
-    $('#severitySelect').addEventListener('change', e => { state.filters.sev = e.target.value; state.filters.page=1; setHash(); renderAll(); });
-    $('#fixSelect').addEventListener('change', e => { state.filters.fix = e.target.value; state.filters.page=1; setHash(); renderAll(); });
-    $('#cvssMinInput').addEventListener('change', e => { state.filters.cvss = Number(e.target.value || 0); state.filters.page=1; setHash(); renderAll(); });
-    $('#onlyDirectChk').addEventListener('change', e => { state.filters.onlyDirect = e.target.checked; state.filters.page=1; setHash(); renderAll(); });
-
-    // dataset select influences filter, not which files are loaded
-    $('#datasetSelect').addEventListener('change', e => { state.filters.ds = e.target.value || ''; state.filters.page=1; setHash(); renderAll(); });
-
-    // chips: critical / high / hasfix / direct
-    $$('[data-chip]').forEach(ch => ch.addEventListener('click', () => {
-      const key = ch.getAttribute('data-chip');
-      if (key === 'critical' || key === 'high') { state.filters.sev = key; $('#severitySelect').value = key; }
-      if (key === 'hasfix') { state.filters.fix = state.filters.fix === 'hasfix' ? '' : 'hasfix'; $('#fixSelect').value = state.filters.fix; }
-      if (key === 'direct') { state.filters.onlyDirect = !state.filters.onlyDirect; $('#onlyDirectChk').checked = state.filters.onlyDirect; }
-      state.filters.page=1; setHash(); renderAll();
-    }));
-
-    $('#resetBtn').onclick = () => {
-      state.filters.q=''; state.filters.ds=''; state.filters.sev=''; state.filters.fix=''; state.filters.cvss=0; state.filters.onlyDirect=false; state.filters.page=1;
-      $('#searchInput').value=''; $('#datasetSelect').value=''; $('#severitySelect').value=''; $('#fixSelect').value=''; $('#cvssMinInput').value='0'; $('#onlyDirectChk').checked=false;
-      setHash(); renderAll();
-    };
-
-    // tabs
-    $$('[data-tab]').forEach(btn => btn.addEventListener('click', () => {
-      state.filters.tab = btn.getAttribute('data-tab');
-      $$('[data-tab]').forEach(b => b.classList.remove('tab-active'));
-      btn.classList.add('tab-active');
-      ['vulns','components','compare'].forEach(id => $(`#tab-${id}`).classList.toggle('hidden', id !== state.filters.tab));
-      setHash();
-    }));
-    // init tab
-    $$('[data-tab]').forEach(b => b.classList.toggle('tab-active', b.getAttribute('data-tab') === state.filters.tab));
-    ['vulns','components','compare'].forEach(id => $(`#tab-${id}`).classList.toggle('hidden', id !== state.filters.tab));
-
-    // compare
-    $('#runCompareBtn').onclick = runCompare;
-
-    // export/save/load
-    $('#exportCsvBtn').onclick = exportCsv;
-    $('#saveViewBtn').onclick = saveView;
-    $('#loadViewBtn').onclick = loadView;
-  }
-
-  function runCompare() {
-    const a = $('#cmpA').value; const b = $('#cmpB').value;
-    $('#cmpOnlyALabel').textContent = a || 'A';
-    $('#cmpOnlyBLabel').textContent = b || 'B';
-    const va = a ? [...(state.datasets.get(a)?.vulns || [])] : [];
-    const vb = b ? [...(state.datasets.get(b)?.vulns || [])] : [];
-    $('#cmpTotalA').textContent = fmt(va.length);
-    $('#cmpTotalB').textContent = fmt(vb.length);
-    $('#cmpBreakA').textContent = breakdown(va);
-    $('#cmpBreakB').textContent = breakdown(vb);
-
-    const setA = new Set(va.map(x => x.id + '|' + x.component));
-    const setB = new Set(vb.map(x => x.id + '|' + x.component));
-    const onlyB = [...setB].filter(x => !setA.has(x)).slice(0, 20);
-    const onlyA = [...setA].filter(x => !setB.has(x)).slice(0, 20);
-
-    $('#cmpDelta').textContent = fmt(vb.length - va.length);
-    $('#cmpOnlyB').innerHTML = onlyB.map(x => `<li>${esc(x.split('|')[0])} in <i>${esc(x.split('|')[1])}</i></li>`).join('');
-    $('#cmpOnlyA').innerHTML = onlyA.map(x => `<li>${esc(x.split('|')[0])} in <i>${esc(x.split('|')[1])}</i></li>`).join('');
-  }
-
-  function breakdown(arr) {
-    const b = severityBuckets(arr);
-    return `Critical ${b.critical} · High ${b.high} · Medium ${b.medium} · Low ${b.low}`;
-  }
-
-  // --------------------------- Export / Save / Load ---------------------------
-  function exportCsv() {
-    const rows = getFiltered();
-    const header = ['severity','cvss','component','version','license','vuln_id','dataset','links','first_seen','direct','refs'];
-    const lines = [header.join(',')];
-    rows.forEach(r => {
-      lines.push([
-        r.severity, r.score, csv(r.component), csv(r.version), csv(r.license),
-        r.id, r.dataset, csv(r.links.join(' ')),
-        r.published ? new Date(r.published).toISOString() : '',
-        r.isDirect ? 'direct' : 'transitive',
-        r.refsCount || 0
-      ].join(','));
-    });
-    const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
+  function downloadCurrent() {
+    const html = document.documentElement.outerHTML;
+    const blob = new Blob([html], { type: 'text/html' });
     const a = document.createElement('a');
-    a.href = url; a.download = 'vulnerabilities.csv'; a.click();
-    URL.revokeObjectURL(url);
-  }
-  function saveView(){
-    localStorage.setItem('sbom-explorer-view', JSON.stringify(state.filters));
-  }
-  function loadView(){
-    try{
-      const v = JSON.parse(localStorage.getItem('sbom-explorer-view') || '{}');
-      Object.assign(state.filters, v || {});
-      wireControls(); setHash(); renderAll();
-    }catch(_){}
+    a.href = URL.createObjectURL(blob);
+    a.download = 'sbom-explorer.html';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   }
 
-  function csv(s){ return `"${String(s ?? '').replace(/"/g,'""')}"`; }
-  function esc(s){ return String(s ?? '').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])); }
+  // Fetch helper with nice errors
+  async function jget(path) {
+    const res = await fetch(path, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`${path}: ${res.status}`);
+    return res.json();
+  }
 
-  // --------------------------- Boot ---------------------------
-  document.addEventListener('DOMContentLoaded', async () => {
-    wireControls();
-    await loadDatasets(); // loads datasets listed in #ds= (comma-separated) or sample.json if present
-    setHash();
-  });
+  function get(obj, path, dflt=null) {
+    return path.split('.').reduce((o, k) => (o && k in o ? o[k] : dflt), obj);
+  }
+
+  // CycloneDX → normalized component
+  function normalizeComponent(c, sbomName) {
+    const licArray = get(c, 'licenses', []).map(l => l.license?.id || l.license?.name).filter(Boolean);
+    const license = licArray[0] || '';
+    const supplier = get(c, 'supplier.name') || get(c, 'publisher') || '';
+    return {
+      sbom: sbomName || '',
+      name: c.name || '',
+      version: c.version || '',
+      purl: c.purl || '',
+      license,
+      licenses: licArray,
+      supplier,
+      scope: c.scope || '',
+    };
+  }
+
+  // CycloneDX → normalized vulnerabilities list
+  function normalizeVulns(bom) {
+    const vulns = get(bom, 'vulnerabilities', [])
+      .map(v => ({
+        id: v.id || v.source?.name || '',
+        severity: v.ratings?.[0]?.severity || v.analysis?.state || '',
+        affects: uniq((v.affects || []).map(a => a.ref)).join(', '),
+        range: (v.affects || []).map(a => a.version || a.range).filter(Boolean).join(', '),
+        description: v.description || v.detail || v.credits || '',
+        refs: (v.advisories || v.references || []).map(r => r.url).filter(Boolean),
+      }));
+    return vulns;
+  }
+
+  function inc(map, key) {
+    if (!key) return;
+    map.set(key, (map.get(key) || 0) + 1);
+  }
+
+  // ---------- Render helpers ----------
+
+  function renderKPIs() {
+    const k = $('#kpis');
+    const uniqueVendors = state.vendors.size;
+    const uniqueLicenses = state.licenses.size;
+    const vulnCount = state.vulns.length;
+    const compCount = state.components.length;
+
+    const tiles = [
+      { label: 'Components', value: fmt.format(compCount) },
+      { label: 'Vendors', value: fmt.format(uniqueVendors) },
+      { label: 'Licenses', value: fmt.format(uniqueLicenses) },
+      { label: 'Vulnerabilities', value: fmt.format(vulnCount), tone: vulnCount ? 'bad' : 'ok' },
+    ];
+
+    k.innerHTML = tiles.map(t => `
+      <div class="kpi">
+        <div class="text-xs text-slate-500 mb-1">${t.label}</div>
+        <div class="text-2xl font-extrabold">${t.value}</div>
+      </div>`).join('');
+  }
+
+  function renderOverview() {
+    const sbomList = $('#sbomList');
+    const meta = $('#metaList');
+
+    // sbom cards
+    sbomList.innerHTML = (state.index?.sboms || []).map(s => `
+      <div class="card p-4 flex items-center justify-between gap-3">
+        <div>
+          <div class="font-semibold">${esc(s.name || s.path || 'SBOM')}</div>
+          <div class="text-xs text-slate-500">${esc(s.path || '')}</div>
+        </div>
+        <div class="flex items-center gap-2">
+          ${chip(esc(s.format || 'CycloneDX'))}
+          ${chip('components: ' + (s.count ?? '—'))}
+          <a class="btn" href="${'sboms/' + (s.path || '')}" target="_blank" rel="noreferrer">Open</a>
+        </div>
+      </div>`).join('');
+
+    // metadata (manifest + tracker quick info)
+    const kv = [];
+    if (state.manifest) {
+      kv.push(['Manifest name', get(state.manifest, 'name', '—')]);
+      kv.push(['Version', get(state.manifest, 'version', '—')]);
+      kv.push(['Created', get(state.manifest, 'metadata.timestamp', '—')]);
+      const suppliers = uniq((get(state.manifest, 'components', []) || []).map(c => c.supplier?.name).filter(Boolean)).length;
+      kv.push(['Suppliers', String(suppliers)]);
+    }
+    if (state.tracker?.vulns?.length) {
+      const sev = (state.tracker.vulns || []).reduce((acc,v)=>{acc[v.severity]=(acc[v.severity]||0)+1;return acc;},{});
+      kv.push(['Tracker vulns', JSON.stringify(sev)]);
+    }
+    meta.innerHTML = kv.map(([k,v]) => `
+      <div><dt class="text-xs text-slate-500">${esc(k)}</dt><dd class="font-medium">${esc(v)}</dd></div>
+    `).join('');
+  }
+
+  function renderClouds() {
+    const licenseWrap = $('#licenseCloud');
+    const vendorWrap = $('#vendorCloud');
+
+    const topLicenses = Array.from(state.licenses.entries()).sort((a,b)=>b[1]-a[1]).slice(0, 12);
+    const topVendors = Array.from(state.vendors.entries()).sort((a,b)=>b[1]-a[1]).slice(0, 12);
+
+    licenseWrap.innerHTML = topLicenses.map(([l,c])=>`<button data-filter-license="${esc(l)}" class="btn">${esc(l)} ${chip(c)}</button>`).join('');
+    vendorWrap.innerHTML  = topVendors.map(([v,c])=>`<button data-filter-vendor="${esc(v)}" class="btn">${esc(v)} ${chip(c)}</button>`).join('');
+  }
+
+  function renderComponents(filterText='') {
+    const tbody = $('#componentsBody');
+    const includeDev = $('#toggleDev').checked;
+    const onlyWithLicense = $('#toggleNoLicense').checked;
+    const f = filterText.toLowerCase();
+
+    const rows = state.components.filter(c => {
+      if (!includeDev && ['dev', 'test', 'optional'].includes((c.scope||'').toLowerCase())) return false;
+      if (onlyWithLicense && !c.license) return false;
+      const hay = [c.name, c.version, c.purl, c.license, c.supplier].join(' ').toLowerCase();
+      return hay.includes(f);
+    }).sort(by('name')).map(c => `
+      <tr>
+        <td>
+          <div class="font-medium">${esc(c.name)}</div>
+          <div class="text-xs text-slate-500 mono">${esc(c.purl||'')}</div>
+        </td>
+        <td class="mono">${esc(c.version)}</td>
+        <td class="mono">${esc(c.purl)}</td>
+        <td>${c.license ? pill(c.license, 'ok') : '<span class="text-slate-400">—</span>'}</td>
+        <td>${esc(c.supplier||'')}</td>
+        <td>${esc(c.scope||'')}</td>
+      </tr>`).join('');
+
+    tbody.innerHTML = rows || `<tr><td colspan="6" class="text-center text-slate-400 py-8">No components match.</td></tr>`;
+    $('#compCount').textContent = fmt.format(rows ? rows.split('<tr>').length - 1 : 0);
+  }
+
+  function renderVulns(filterText='') {
+    const tbody = $('#vulnsBody');
+    const f = filterText.toLowerCase();
+
+    const rows = state.vulns.filter(v => {
+      const hay = [v.id, v.severity, v.affects, v.description].join(' ').toLowerCase();
+      return hay.includes(f);
+    }).map(v => `
+      <tr>
+        <td>
+          <div class="font-semibold">${esc(v.id)}</div>
+          ${v.refs?.slice(0,2).map(u => `<div class="text-xs"><a class="underline" href="${esc(u)}" target="_blank" rel="noreferrer">${esc(u)}</a></div>`).join('')}
+        </td>
+        <td>${v.severity ? pill(v.severity, (v.severity||'').match(/(high|critical)/i) ? 'bad' : (v.severity||'').match(/(medium)/i) ? 'warn' : 'ok') : '—'}</td>
+        <td class="mono">${esc(v.affects || '—')}</td>
+        <td class="mono">${esc(v.range || '—')}</td>
+        <td>${esc(v.description || '—')}</td>
+      </tr>`).join('');
+
+    tbody.innerHTML = rows || `<tr><td colspan="5" class="text-center text-slate-400 py-8">No vulnerabilities recorded.</td></tr>`;
+    $('#vulnCount').textContent = fmt.format(rows ? rows.split('<tr>').length - 1 : 0);
+  }
+
+  function renderHistory() {
+    const wrap = $('#history');
+    const items = (state.history || []).map(h => `
+      <div class="card p-4">
+        <div class="flex items-center justify-between">
+          <div class="font-semibold">${esc(h.title || h.event || 'Event')}</div>
+          <div class="text-xs text-slate-500">${esc(h.date || h.timestamp || '')}</div>
+        </div>
+        <div class="text-sm mt-2">${esc(h.description || h.notes || '')}</div>
+      </div>`).join('');
+    wrap.innerHTML = items || `<div class="text-slate-500">No history entries found.</div>`;
+  }
+
+  function renderFiles() {
+    const pub = $('#publicFiles');
+    const sbo = $('#sbomFiles');
+    const p = state.index?.public ?? ['public/history.json', 'public/sbom-index.json', 'public/tracker.json'];
+    const s = state.index?.sboms?.map(it => 'sboms/' + (it.path || it.name || '')) ?? [];
+
+    pub.innerHTML = p.map(f => `<div class="card p-3 flex items-center justify-between"><span class="mono">${esc(f)}</span><a class="btn" href="${esc(f)}" target="_blank" rel="noreferrer">Open</a></div>`).join('');
+    sbo.innerHTML = s.map(f => `<div class="card p-3 flex items-center justify-between"><span class="mono">${esc(f)}</span><a class="btn" href="${esc(f)}" target="_blank" rel="noreferrer">Open</a></div>`).join('');
+  }
+
+  function wireTabs() {
+    $$('.tab').forEach(btn => btn.addEventListener('click', () => {
+      $$('.tab').forEach(b => b.classList.remove('tab-active'));
+      btn.classList.add('tab-active');
+      const id = btn.getAttribute('data-tab');
+      ['overview','components','vulns','history','files'].forEach(t => {
+        $('#tab-'+t).classList.toggle('hidden', t !== id);
+      });
+    }));
+  }
+
+  function wireSearches() {
+    $('#quickSearch').addEventListener('keydown', (e)=>{
+      if (e.key === 'Enter') {
+        $('#compSearch').value = e.currentTarget.value;
+        renderComponents(e.currentTarget.value);
+        document.querySelector('[data-tab="components"]').click();
+      }
+    });
+    $('#compSearch').addEventListener('input', (e)=> renderComponents(e.currentTarget.value));
+    $('#vulnSearch').addEventListener('input', (e)=> renderVulns(e.currentTarget.value));
+    $('#toggleDev').addEventListener('change', ()=> renderComponents($('#compSearch').value));
+    $('#toggleNoLicense').addEventListener('change', ()=> renderComponents($('#compSearch').value));
+    $('#downloadBtn').addEventListener('click', downloadCurrent);
+  }
+
+  function wireCloudFilters() {
+    document.body.addEventListener('click', (e)=>{
+      const lic = e.target.closest('[data-filter-license]')?.getAttribute('data-filter-license');
+      const ven = e.target.closest('[data-filter-vendor]')?.getAttribute('data-filter-vendor');
+      if (lic || ven) {
+        const q = [lic, ven].filter(Boolean).join(' ');
+        $('#compSearch').value = q;
+        renderComponents(q);
+        document.querySelector('[data-tab="components"]').click();
+      }
+    });
+  }
+
+  // ---------- Boot ----------
+
+  async function boot() {
+    try {
+      // 1) Load index
+      state.index = await jget('public/sbom-index.json').catch(()=>({}));
+      setSubtitle(state.index?.title || 'SBOMs & project metadata');
+
+      // 2) Parallel load of supporting JSONs (best-effort)
+      const [history, tracker, manifest] = await Promise.all([
+        jget('public/history.json').catch(()=>[]),
+        jget('public/tracker.json').catch(()=>({ vulns: [] })),
+        jget('sboms/manifest.json').catch(()=>null),
+      ]);
+      state.history = Array.isArray(history) ? history : (history.items || history.events || []);
+      state.tracker = tracker || { vulns: [] };
+      state.manifest = manifest;
+
+      // 3) Load SBOM docs from index
+      const sbomEntries = state.index?.sboms || [];
+      const docs = await Promise.all(sbomEntries.map(async (s) => {
+        const path = 'sboms/' + (s.path || s.name || '');
+        const bom = await jget(path).catch(()=>null);
+        return { entry: s, bom, name: s.name || s.path || 'SBOM' };
+      }));
+
+      state.sboms = docs.filter(d => d.bom).map(d => d.bom);
+
+      // 4) Flatten components + vulns
+      for (const doc of docs) {
+        if (!doc.bom) continue;
+        const comps = get(doc.bom, 'components', []);
+        for (const c of comps) {
+          const nc = normalizeComponent(c, doc.name);
+          state.components.push(nc);
+          inc(state.vendors, nc.supplier);
+          (nc.licenses || []).forEach(l => inc(state.licenses, l));
+        }
+        state.vulns.push(...normalizeVulns(doc.bom));
+      }
+
+      // Also merge tracker vulns if present
+      if (Array.isArray(state.tracker.vulns)) {
+        state.vulns.push(...state.tracker.vulns.map(v => ({
+          id: v.id || v.cve || v.alias || '',
+          severity: v.severity || v.cvss?.severity || '',
+          affects: (v.affects || v.components || []).join(', '),
+          range: v.range || v.version || '',
+          description: v.title || v.description || '',
+          refs: v.refs || v.links || [],
+        })));
+      }
+
+      // 5) Initial paints
+      renderKPIs();
+      renderOverview();
+      renderClouds();
+      renderComponents('');
+      renderVulns('');
+      renderHistory();
+      renderFiles();
+
+      // 6) Show download
+      $('#downloadBtn').classList.remove('hidden');
+
+    } catch (err) {
+      console.error(err);
+      setSubtitle('Failed to load assets. See console.');
+    }
+  }
+
+  // Wire UI
+  wireTabs();
+  wireSearches();
+  wireCloudFilters();
+  boot();
+
 })();
