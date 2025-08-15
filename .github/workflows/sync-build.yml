@@ -14,6 +14,7 @@ on:
   workflow_dispatch: {}
 
 permissions:
+  actions: read
   contents: write   # commit generated files
 
 jobs:
@@ -21,6 +22,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: Sbom-Parser   # checkout the feature branch
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -32,7 +35,7 @@ jobs:
 
       - name: Sync SBOM artifacts from Nightingale
         env:
-          NIGHTINGALE_TOKEN: ${{ secrets.NIGHTINGALE_TOKEN }}
+          SBOM_SYNC_TOKEN: ${{ secrets.SBOM_SYNC_TOKEN }}
         run: npm run sync:sboms
 
       - name: Build static UI
@@ -42,4 +45,4 @@ jobs:
         run: |
           git add -A
           git commit -m "sync SBOMs + rebuild UI" || echo "No changes"
-          git push
+          git push origin Sbom-Parser
