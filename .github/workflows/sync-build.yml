@@ -65,7 +65,7 @@ jobs:
 
       - name: Commit changes & push changes to target branch
         run: |
-          git add -A
+          git add public/*.json
           git commit -m "chore: sync SBOMs + rebuild UI (branch: $TARGET_BRANCH)" || { echo "No changes"; exit 0; }
           # Set upstream if branch was just created
           git rev-parse --abbrev-ref --symbolic-full-name @{u} >/dev/null 2>&1 || git push --set-upstream origin "$TARGET_BRANCH"
