@@ -1,12 +1,16 @@
 {
-  "dependencies": {
-    "@octokit/rest": "^20.1.0",
-    "adm-zip": "^0.5.10",
-    "glob": "^10.3.10"
-  },
+  "name": "sbom-parser",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
   "scripts": {
     "sync:sboms": "node scripts/fetch-artifacts.mjs",
     "build:ui": "node parse-sbom.js",
-    "serve": "npx http-server -c-1 -p 8080"
+    "serve": "npx serve -s . -p 8080"
+  },
+  "dependencies": {
+    "@octokit/rest": "20.1.2",
+    "adm-zip": "^0.5.10",
+    "glob": "10.4.5"
   }
 }
