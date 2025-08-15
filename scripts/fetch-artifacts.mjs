@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * Download .zip artifacts listed in sboms/manifest.json from
- * NIGHTINGALE_OWNER/NIGHTINGALE_REPO and unzip into sboms/<dataset>/.
+ * Download .zip artifacts listed in sboms/manifest.json from NIGHTINGALE_OWNER/NIGHTINGALE_REPO
+ * and unzip into sboms/<dataset>/.
  *
- * Env required:
- *   TOKEN                - PAT with repo + actions:read permission to nightingale
- *   NIGHTINGALE_OWNER    - default "sidbhasin13"
- *   NIGHTINGALE_REPO     - default "nightingale"
+ * Env:
+ *   TOKEN               - PAT with repo + actions:read on NIGHTINGALE_REPO
+ *   NIGHTINGALE_OWNER   - default "sidbhasin13"
+ *   NIGHTINGALE_REPO    - default "nightingale"
  */
 import fs from "fs";
 import path from "path";
@@ -18,7 +18,7 @@ const REPO  = process.env.NIGHTINGALE_REPO  || "nightingale";
 const TOKEN = process.env.TOKEN;
 
 if (!TOKEN) {
-  console.error("TOKEN is missing. Set it via GitHub secret mapping (TOKEN_SBOM → TOKEN).");
+  console.error("TOKEN is missing. Map your secret (TOKEN_SBOM) to env TOKEN in the workflow.");
   process.exit(1);
 }
 
@@ -32,39 +32,49 @@ function readManifest() {
     console.error(`Missing ${MANIFEST}.`);
     process.exit(1);
   }
-  const json = JSON.parse(fs.readFileSync(MANIFEST, "utf8"));
-  if (!Array.isArray(json.artifacts)) {
+  const j = JSON.parse(fs.readFileSync(MANIFEST, "utf8"));
+  if (!Array.isArray(j.artifacts)) {
     console.error("manifest.artifacts must be an array.");
     process.exit(1);
   }
-  return json.artifacts;
+  return j.artifacts;
 }
 
 async function findNewestArtifactByName(name) {
-  let page = 1, newest = null;
+  let newest = null, page = 1;
   for (;;) {
     const { data } = await octokit.actions.listArtifactsForRepo({
       owner: OWNER, repo: REPO, per_page: 100, page
     });
-    const list = data.artifacts || [];
-    for (const a of list) {
+    const arr = data.artifacts || [];
+    for (const a of arr) {
       if (a.name === name && !a.expired) {
         if (!newest || new Date(a.created_at) > new Date(newest.created_at)) newest = a;
       }
     }
-    if (list.length < 100) break;
+    if (arr.length < 100) break;
     page++;
   }
   return newest;
 }
 
+// IMPORTANT: download without Authorization header to the Azure blob SAS URL
 async function downloadZip(artifactId, outFile) {
-  const { url } = await octokit.request(
+  // ask GitHub for pre-signed redirect
+  const resp = await octokit.request(
     "GET /repos/{owner}/{repo}/actions/artifacts/{artifact_id}/{archive_format}",
-    { owner: OWNER, repo: REPO, artifact_id: artifactId, archive_format: "zip" }
+    { owner: OWNER, repo: REPO, artifact_id: artifactId, archive_format: "zip", request: { redirect: "manual" } }
   );
-  const res = await octokit.request("GET " + url, { request: { decompress: false } });
-  fs.writeFileSync(outFile, Buffer.from(res.data));
+  const location = resp.headers?.location || resp.url || resp.data?.url;
+  if (!location) throw new Error("No Location header for artifact download");
+
+  const blobRes = await fetch(location); // NO auth header!
+  if (!blobRes.ok) {
+    const text = await blobRes.text().catch(()=> "");
+    throw new Error(`Blob download failed: ${blobRes.status} ${blobRes.statusText} ${text.slice(0,200)}`);
+  }
+  const ab = await blobRes.arrayBuffer();
+  fs.writeFileSync(outFile, Buffer.from(ab));
 }
 
 async function main() {
@@ -72,11 +82,11 @@ async function main() {
   if (!fs.existsSync(SBOMS_DIR)) fs.mkdirSync(SBOMS_DIR, { recursive: true });
 
   for (const { name, dataset } of items) {
-    if (!name || !dataset) { console.warn("⚠️  Bad manifest entry:", { name, dataset }); continue; }
+    if (!name || !dataset) { console.warn("Bad manifest entry:", { name, dataset }); continue; }
 
     console.log(`\nArtifact: ${name}`);
     const art = await findNewestArtifactByName(name);
-    if (!art) { console.error(`Not found or expired: ${name}`); continue; }
+    if (!art) { console.error(`Not found/expired: ${name}`); continue; }
 
     const tmp = path.join(ROOT, `${name}.zip`);
     console.log(`Downloading #${art.id} → ${tmp}`);
@@ -92,10 +102,11 @@ async function main() {
     new AdmZip(tmp).extractAllTo(targetDir, true);
     fs.rmSync(tmp, { force: true });
 
-    const cyclonedx = (fs.readdirSync(targetDir).filter(f => f.endsWith(".cyclonedx.json")));
-    if (!cyclonedx.length) console.warn(`⚠️  No *.cyclonedx.json inside ${name}.zip`);
+    const cyclonedx = fs.readdirSync(targetDir).filter(f => f.endsWith(".cyclonedx.json"));
+    if (!cyclonedx.length) console.warn(`No *.cyclonedx.json found inside ${name}.zip`);
     else console.log(`Found: ${cyclonedx.join(", ")}`);
   }
+
   console.log("\nSync complete.");
 }
 
