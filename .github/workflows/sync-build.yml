@@ -20,10 +20,27 @@ permissions:
 jobs:
   sync_build:
     runs-on: ubuntu-latest
+    env:
+      # Use branch from dispatch payload, else fall back to 'Sbom-Parser'
+      TARGET_BRANCH: ${{ github.event.client_payload.target_branch || 'Sbom-Parser' }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout default branch (just to get the repo + full history)
+        uses: actions/checkout@v4
         with:
-          ref: Sbom-Parser   # checkout the feature branch
+          fetch-depth: 0
+
+      - name: Switch to target branch (create if missing)
+        run: |
+          git fetch origin
+          if git ls-remote --exit-code --heads origin "$TARGET_BRANCH" >/dev/null 2>&1; then
+            echo "Branch exists on remote: $TARGET_BRANCH"
+            git switch "$TARGET_BRANCH"
+            git pull --ff-only origin "$TARGET_BRANCH"
+          else
+            echo "Creating branch: $TARGET_BRANCH"
+            git switch -c "$TARGET_BRANCH"
+          fi
+          git status
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -41,8 +58,10 @@ jobs:
       - name: Build static UI
         run: npm run build:ui
 
-      - name: Commit changes
+      - name: Commit changes & push changes to target branch
         run: |
           git add -A
-          git commit -m "sync SBOMs + rebuild UI" || echo "No changes"
-          git push origin Sbom-Parser
+          git commit -m "chore: sync SBOMs + rebuild UI (branch: $TARGET_BRANCH)" || { echo "No changes"; exit 0; }
+          # Set upstream if branch was just created
+          git rev-parse --abbrev-ref --symbolic-full-name @{u} >/dev/null 2>&1 || git push --set-upstream origin "$TARGET_BRANCH"
+          git push
