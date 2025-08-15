@@ -10,10 +10,10 @@ import { Octokit } from "@octokit/rest";
 
 const OWNER = process.env.NIGHTINGALE_OWNER || "sidbhasin13";
 const REPO  = process.env.NIGHTINGALE_REPO  || "nightingale";
-const TOKEN = process.env.NIGHTINGALE_TOKEN;
+const TOKEN = process.env.TOKEN;
 
 if (!TOKEN) {
-  console.error("NIGHTINGALE_TOKEN is missing. Set it in GitHub Actions secrets (COMMON_PAT → NIGHTINGALE_TOKEN) or your shell.");
+  console.error("TOKEN is missing. Set it in GitHub Actions secrets (COMMON_PAT → TOKEN) or your shell.");
   process.exit(1);
 }
 

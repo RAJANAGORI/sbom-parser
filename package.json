@@ -5,7 +5,7 @@
     "glob": "^10.3.10"
   },
   "scripts": {
-    "sync:sboms": "node scripts/fetch-artifacts.js",
+    "sync:sboms": "node scripts/fetch-artifacts.mjs",
     "build:ui": "node parse-sbom.js",
     "serve": "npx http-server -c-1 -p 8080"
   }
