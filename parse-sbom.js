@@ -1,14 +1,13 @@
 #!/usr/bin/env node
-/**
- * Build a fast index JSON from CycloneDX files found in sboms/**/.
- * Outputs:
- *   - public/sbom-index.json   (snapshot, metrics, deltas)
- *   - public/history.json      (rolling history for sparklines)
- *   - public/tracker.json      (per-vuln lifecycle for TTF & open age)
- */
+// Build a fast index JSON from CycloneDX files under sboms/* (any subfolder).
+// Outputs:
+//   - public/sbom-index.json   (snapshot, metrics, deltas)
+//   - public/history.json      (rolling history for sparklines)
+//   - public/tracker.json      (per-vuln lifecycle for TTF & open age)
+
 import fs from "fs";
 import path from "path";
-import glob from "glob";
+import { globSync } from "glob";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -132,7 +131,7 @@ function buildTopCVEs(items) {
   return [...map.values()]
     .map(x => ({ id:x.id, count:x.count, datasets:[...x.datasets].sort(), maxCVSS: x.maxCVSS, worstSeverityRank:x.worstSeverityRank }))
     .sort((a,b)=> (b.worstSeverityRank - a.worstSeverityRank) || (b.count - a.count) || (b.maxCVSS??0)-(a.maxCVSS??0))
-    .slice(10); // top 10
+    .slice(0, 10); // top 10
 }
 
 function main() {
@@ -140,7 +139,7 @@ function main() {
   const now = new Date().toISOString();
 
   // 1) Parse SBOMs
-  const files = glob.sync("**/*.cyclonedx.json", { cwd: SBOMS_DIR, absolute: true, nodir: true });
+  const files = globSync("**/*.cyclonedx.json", { cwd: SBOMS_DIR, absolute: true, nodir: true });
   const datasets = [];
   for (const f of files) {
     const json = readJSON(f);
@@ -157,17 +156,13 @@ function main() {
   for (const it of items) {
     const key = makeKey(it);
     currentKeys.add(key);
-    if (!tracker.vulns[key]) tracker.vulns[key] = { firstSeen: now, lastSeen: now, closedAt: null, meta: { id: it.id, component: it.component, dataset: it.dataset } };
+    if (!tracker.vulns[key]) tracker.vulns[key] = { firstSeen: now, lastSeen: now, closedAt: null, meta: { id: it.id, component: it.component, dataset: it.dataset} };
     tracker.vulns[key].lastSeen = now;
-    tracker.vulns[key].closedAt = null; // still present
+    tracker.vulns[key].closedAt = null;
   }
-  // mark closures (anything not seen this run but present before)
   for (const [key, rec] of Object.entries(tracker.vulns)) {
-    if (!currentKeys.has(key) && rec.closedAt === null) {
-      rec.closedAt = now;
-    }
+    if (!currentKeys.has(key) && rec.closedAt === null) rec.closedAt = now;
   }
-  // prune very old closed entries (keep last 5000 to avoid growth)
   const entries = Object.entries(tracker.vulns);
   if (entries.length > 12000) {
     const closed = entries.filter(([,r]) => r.closedAt).sort((a,b)=> new Date(b[1].closedAt)-new Date(a[1].closedAt));
@@ -178,7 +173,7 @@ function main() {
   }
   writeJSON(TRK_FILE, tracker);
 
-  // 3) Metrics (counts, deltas, TTF, ages, top CVEs)
+  // 3) Metrics
   const datasetSummaries = datasets.map(d => ({
     id: d.dataset,
     created: d.created,
@@ -207,36 +202,27 @@ function main() {
   if (overallPrev?.severityCounts) for (const k of Object.keys(overallSeverity)) overallSevDelta[k] = (overallSeverity[k]||0)-(overallPrev.severityCounts[k]||0);
   else for (const k of Object.keys(overallSeverity)) overallSevDelta[k] = null;
 
-  // Fix availability rate (how many vulns indicate any fix)
   const fixAvailRate = items.length ? Math.round(100 * (items.filter(it => (it.fixedVersions||[]).length>0).length / items.length)) : 0;
 
-  // TTF (median days for closed vulns)
-  const ttfDays = Object.values(tracker.vulns)
-    .filter(r => r.closedAt)
+  const ttfDays = Object.values(tracker.vulns).filter(r => r.closedAt)
     .map(r => daysBetween(r.firstSeen, r.closedAt));
   const ttfMedianDays = median(ttfDays);
 
-  // Open age (median of days since firstSeen for *current* vulns)
   const nowISO = now;
-  const openAgeDays = Object.entries(tracker.vulns)
-    .filter(([k]) => currentKeys.has(k))
+  const openAgeDays = Object.entries(tracker.vulns).filter(([k]) => currentKeys.has(k))
     .map(([,r]) => daysBetween(r.firstSeen, nowISO));
   const openAgeMedianDays = median(openAgeDays);
 
-  // Oldest open top 5
-  const oldestOpen = Object.entries(tracker.vulns)
-    .filter(([k]) => currentKeys.has(k))
+  const oldestOpen = Object.entries(tracker.vulns).filter(([k]) => currentKeys.has(k))
     .map(([k,r]) => ({ key:k, days: daysBetween(r.firstSeen, nowISO), meta:r.meta }))
     .sort((a,b)=> b.days - a.days)
     .slice(0,5);
 
-  // Attach firstSeen to current items (for UI hover)
   const itemsWithAge = items.map(it => {
     const rec = tracker.vulns[makeKey(it)];
     return { ...it, firstSeen: rec?.firstSeen || null };
   });
 
-  // Top CVEs
   const topCVEs = buildTopCVEs(itemsWithAge);
 
   const snapshot = {
