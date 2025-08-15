@@ -23,6 +23,9 @@ jobs:
     env:
       # Use branch from dispatch payload, else fall back to 'Sbom-Parser'
       TARGET_BRANCH: ${{ github.event.client_payload.target_branch || 'Sbom-Parser' }}
+      # Where to pull artifacts from (your Nightingale repo)
+      NIGHTINGALE_OWNER: sidbhasin13
+      NIGHTINGALE_REPO: nightingale
     steps:
       - name: Checkout default branch (just to get the repo + full history)
         uses: actions/checkout@v4
@@ -52,7 +55,9 @@ jobs:
 
       - name: Sync SBOM artifacts from Nightingale
         env:
-          GH_TOKEN: ${{ secrets.TOKEN }}
+          TOKEN: ${{ secrets.TOKEN_SBOM }}
+          NIGHTINGALE_OWNER: ${{ env.NIGHTINGALE_OWNER }}
+          NIGHTINGALE_REPO:  ${{ env.NIGHTINGALE_REPO }}
         run: npm run sync:sboms
 
       - name: Build static UI
