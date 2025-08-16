@@ -111,13 +111,13 @@
         </div>
       </div>
 
-      <!-- New severity bar (filtered) -->
+      <!-- Severity bar (filtered) -->
       <div class="card lg:col-span-12">
         <div class="text-sm font-medium mb-2">Severity breakdown (filtered)</div>
         <canvas id="barSevFiltered" height="80"></canvas>
       </div>
 
-      <!-- New per-dataset stacked bars (filtered set) -->
+      <!-- Per-dataset stacked bars (filtered set) -->
       <div class="card lg:col-span-12">
         <div class="flex items-center justify-between mb-2">
           <div class="text-sm font-medium">Per-dataset severity (filtered set)</div>
@@ -202,7 +202,7 @@
       <nav class="-mb-px flex gap-2" role="tablist" aria-label="Views">
         <button :class="tab==='vulns' ? activeTab : baseTab" @click="tab='vulns'; persistToHash()" role="tab" :aria-selected="tab==='vulns'">Vulnerabilities</button>
         <button :class="tab==='components' ? activeTab : baseTab" @click="tab='components'; persistToHash()" role="tab" :aria-selected="tab==='components'">Components</button>
-        <button :class="tab==='compare' ? activeTab : baseTab" @click="tab='compare'; persistToHash()" role="tab" :aria-selected="tab==='compare'">Compare datasets</button>
+        <button :class="tab==='compare' ? activeTab : baseTab" @click="tab='compare'; persistToHash(); queueChartRedraw()" role="tab" :aria-selected="tab==='compare'">Compare datasets</button>
       </nav>
     </div>
 
@@ -395,8 +395,7 @@
       sevOrder: ['CRITICAL','HIGH','MEDIUM','LOW','INFO','UNKNOWN'],
 
       // derived (filtered)
-      sevCountsFiltered: {}, fixRateFiltered: 0, filterSummary: "",
-      perDatasetSev: {},
+      sevCountsFiltered: {}, fixRateFiltered: 0, filterSummary: "", perDatasetSev: {},
 
       // sort/paging
       sortKey: "severityRank", sortDir: "desc", page: 0, perPage: 50, pages: 0,
@@ -412,7 +411,10 @@
 
       // charts
       donutChart: null, sparks: {}, barSev: null, barStacked: null,
-      cmpBarA: null, cmpBarB: null, cmpDelta: null, chartsReady: false,
+      cmpBarA: null, cmpBarB: null, cmpDelta: null,
+
+      // gating to prevent Chart.js "ctx.save() of null"
+      chartsReady: false, _redrawQueued: false,
 
       metaText: "",
       baseTab: "px-3 py-2 text-sm border-b-2 border-transparent text-gray-500",
@@ -438,13 +440,32 @@
         this.restoreFromHash();
         this.applyFilters(true);
 
-        // initial charts after paint
+        // ensure charts draw only after Alpine paints
         this.$nextTick(() => {
-          this.drawDonut();
-          this.drawSparklines();
-          this.drawSeverityBar();
-          this.drawDatasetStacked();
           this.chartsReady = true;
+          this.queueChartRedraw(true); // force first draw
+        });
+      },
+
+      // ---------- DRAW GATING ----------
+      canDraw(id){
+        const el = document.getElementById(id);
+        if (!el) return false;
+        try { return !!el.getContext && !!el.getContext('2d'); } catch { return false; }
+      },
+      queueChartRedraw(force=false){
+        if (!this.chartsReady && !force) { this._redrawQueued = true; return; }
+        if (this._redrawQueued && !force) return;
+        this._redrawQueued = true;
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            this._redrawQueued = false;
+            this.drawDonut();
+            this.drawSeverityBar();
+            this.drawDatasetStacked();
+            if (this.tab === 'vulns') this.drawSparklines();
+            if (this.cmpReady) this.drawCompareCharts();
+          });
         });
       },
 
@@ -498,10 +519,8 @@
         this.perDatasetSev = this.groupByDatasetSev(this.filtered);
         this.filterSummary = this.buildFilterSummary();
 
-        // charts update
-        this.drawDonut();
-        this.drawSeverityBar();
-        this.drawDatasetStacked();
+        // safe chart redraw
+        this.queueChartRedraw();
 
         this.persistToHash();
         if (buildGroup) this.buildGrouped(); else this.applyGroup();
@@ -608,10 +627,10 @@
       compNext(){ if (this.compPage+1 < this.compPages){ this.compPage++; this.groupPaginate(); } },
       compPrev(){ if (this.compPage>0){ this.compPage--; this.groupPaginate(); } },
 
-      // Compare (with charts)
+      // Compare
       buildCompare(){
         this.cmpReady = false;
-        // base on *unfiltered* items to compare full datasets
+
         const A = this.items.filter(x => x.dataset===this.cmpA);
         const B = this.items.filter(x => x.dataset===this.cmpB);
         if (!this.cmpA || !this.cmpB || this.cmpA===this.cmpB || !A.length || !B.length){
@@ -636,52 +655,59 @@
         };
         this.cmpReady = true;
 
-        this.$nextTick(()=>this.drawCompareCharts());
+        // safe draw
+        this.queueChartRedraw();
       },
 
       // charts — donut (filtered)
       drawDonut(){
-        const el = document.getElementById("donut");
-        if (!el || !window.Chart) return;
-        const labels = this.sevOrder.slice(0,5); // CRITICAL..INFO
+        if (!this.canDraw('donut') || !window.Chart) return;
+        const el = document.getElementById('donut');
+        const labels = ['CRITICAL','HIGH','MEDIUM','LOW','INFO'];
         const data = labels.map(k => this.sevCountsFiltered[k] || 0);
-        if (this.donutChart) try{ this.donutChart.destroy(); }catch(e){}
-        this.donutChart = new Chart(el, {
-          type: 'doughnut',
-          data: { labels, datasets: [{ data }] },
-          options: { plugins: { legend: { position: 'bottom' } }, cutout: '65%' }
-        });
+        if (this.donutChart) { try { this.donutChart.destroy(); } catch{} }
+        try {
+          this.donutChart = new Chart(el, {
+            type: 'doughnut',
+            data: { labels, datasets: [{ data }] },
+            options: { plugins: { legend: { position: 'bottom' } }, cutout: '65%' }
+          });
+        } catch {}
       },
       // charts — filtered severity bar
       drawSeverityBar(){
-        const el = document.getElementById("barSevFiltered");
-        if (!el || !window.Chart) return;
-        const labels = this.sevOrder.slice(0,5);
+        if (!this.canDraw('barSevFiltered') || !window.Chart) return;
+        const el = document.getElementById('barSevFiltered');
+        const labels = ['CRITICAL','HIGH','MEDIUM','LOW','INFO'];
         const data = labels.map(k => this.sevCountsFiltered[k] || 0);
-        if (this.barSev) try{ this.barSev.destroy(); }catch(e){}
-        this.barSev = new Chart(el, {
-          type: 'bar',
-          data: { labels, datasets: [{ label: 'Count', data }] },
-          options: { plugins:{ legend:{ display:false } }, responsive:true, scales:{ y:{ beginAtZero:true } } }
-        });
+        if (this.barSev) { try { this.barSev.destroy(); } catch{} }
+        try {
+          this.barSev = new Chart(el, {
+            type: 'bar',
+            data: { labels, datasets: [{ label: 'Count', data }] },
+            options: { plugins:{ legend:{ display:false } }, responsive:true, scales:{ y:{ beginAtZero:true } } }
+          });
+        } catch {}
       },
       // charts — per-dataset stacked bars (filtered set)
       drawDatasetStacked(){
-        const el = document.getElementById("barDatasetStacked");
-        if (!el || !window.Chart) return;
+        if (!this.canDraw('barDatasetStacked') || !window.Chart) return;
+        const el = document.getElementById('barDatasetStacked');
         const dsNames = Object.keys(this.perDatasetSev).sort();
-        const sevKeys = this.sevOrder.slice(0,5);
+        const sevKeys = ['CRITICAL','HIGH','MEDIUM','LOW','INFO'];
         const datasets = sevKeys.map(s => ({
           label: s,
           data: dsNames.map(d => this.perDatasetSev[d]?.[s] || 0),
           stack: 'sev'
         }));
-        if (this.barStacked) try{ this.barStacked.destroy(); }catch(e){}
-        this.barStacked = new Chart(el, {
-          type: 'bar',
-          data: { labels: dsNames, datasets },
-          options: { responsive:true, plugins:{ legend:{ position:'bottom' } }, scales:{ x:{ stacked:true }, y:{ stacked:true, beginAtZero:true } } }
-        });
+        if (this.barStacked) { try { this.barStacked.destroy(); } catch{} }
+        try {
+          this.barStacked = new Chart(el, {
+            type: 'bar',
+            data: { labels: dsNames, datasets },
+            options: { responsive:true, plugins:{ legend:{ position:'bottom' } }, scales:{ x:{ stacked:true }, y:{ stacked:true, beginAtZero:true } } }
+          });
+        } catch {}
       },
       // charts — sparklines (overall history)
       drawSparklines(){
@@ -707,33 +733,30 @@
 
       // charts — compare
       drawCompareCharts(){
-        const sevKeys = this.sevOrder.slice(0,5);
+        const sevKeys = ['CRITICAL','HIGH','MEDIUM','LOW','INFO'];
+        const need = ['cmpBarA','cmpBarB','cmpDelta'];
+        if (!need.every(id => this.canDraw(id))) return;
+
         const aData = sevKeys.map(k => this.cmpStats.A.sev[k] || 0);
         const bData = sevKeys.map(k => this.cmpStats.B.sev[k] || 0);
         const dData = sevKeys.map(k => this.cmpStats.delta.sev[k] || 0);
 
-        const elA = document.getElementById("cmpBarA");
-        const elB = document.getElementById("cmpBarB");
-        const elD = document.getElementById("cmpDelta");
-        if (!elA || !elB || !elD) return;
-
         this.destroyCompareCharts();
 
-        this.cmpBarA = new Chart(elA, {
-          type: 'bar',
-          data: { labels: sevKeys, datasets: [{ label: this.cmpA, data: aData }] },
-          options: { indexAxis: 'y', plugins:{ legend:{ display:false } }, scales:{ x:{ beginAtZero:true } } }
-        });
-        this.cmpBarB = new Chart(elB, {
-          type: 'bar',
-          data: { labels: sevKeys, datasets: [{ label: this.cmpB, data: bData }] },
-          options: { indexAxis: 'y', plugins:{ legend:{ display:false } }, scales:{ x:{ beginAtZero:true } } }
-        });
-        this.cmpDelta = new Chart(elD, {
-          type: 'bar',
-          data: { labels: sevKeys, datasets: [{ label: 'Δ (B−A)', data: dData }] },
-          options: { plugins:{ legend:{ display:false } }, scales:{ y:{ beginAtZero:true } } }
-        });
+        try {
+          this.cmpBarA = new Chart(document.getElementById('cmpBarA'), {
+            type:'bar', data:{ labels: sevKeys, datasets:[{ label:this.cmpA, data:aData }] },
+            options:{ indexAxis:'y', plugins:{ legend:{ display:false } }, scales:{ x:{ beginAtZero:true } } }
+          });
+          this.cmpBarB = new Chart(document.getElementById('cmpBarB'), {
+            type:'bar', data:{ labels: sevKeys, datasets:[{ label:this.cmpB, data:bData }] },
+            options:{ indexAxis:'y', plugins:{ legend:{ display:false } }, scales:{ x:{ beginAtZero:true } } }
+          });
+          this.cmpDelta = new Chart(document.getElementById('cmpDelta'), {
+            type:'bar', data:{ labels: sevKeys, datasets:[{ label:'Δ (B−A)', data:dData }] },
+            options:{ plugins:{ legend:{ display:false } }, scales:{ y:{ beginAtZero:true } } }
+          });
+        } catch {}
       },
       destroyCompareCharts(){
         for (const ref of ['cmpBarA','cmpBarB','cmpDelta']){
@@ -781,7 +804,7 @@
         this.compPage = Number(s.get("cp") || this.compPage || 0);
         this.cmpA = s.get("cmpA") || this.cmpA;
         this.cmpB = s.get("cmpB") || this.cmpB;
-        if (this.cmpA && this.cmpB && this.cmpA !== this.cmpB) this.$nextTick(()=>this.buildCompare());
+        if (this.cmpA && this.cmpB && this.cmpA !== this.cmpB) this.queueChartRedraw();
       }
     }
   }
