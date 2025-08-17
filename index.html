@@ -129,14 +129,58 @@
       </div>
     </section>
 
-    <!-- Metrics + Top CVEs (always populated if present in snapshot) -->
+    <!-- Metrics + Top CVEs (microcharts integrated) -->
     <section class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-      <div class="card">
-        <div class="text-xs text-gray-500">Fix availability rate (filtered)</div>
-        <div class="text-2xl font-semibold" x-text="fixRateFiltered + '%'"></div>
-        <div class="muted mt-1">% of filtered vulns with known fixes</div>
+      <!-- Fix availability ring gauge -->
+      <div class="card flex items-center gap-3">
+        <div class="shrink-0">
+          <svg viewBox="0 0 44 44" width="64" height="64" aria-label="Fix availability ring"
+               :title="`Fix availability: ${fixRateFiltered}%`">
+            <circle cx="22" cy="22" r="18" fill="none" class="text-gray-200" stroke="currentColor" stroke-width="6"/>
+            <circle cx="22" cy="22" r="18" fill="none"
+                    :stroke-dasharray="ringCircumference"
+                    :stroke-dashoffset="ringOffsetFix"
+                    class="text-emerald-500"
+                    stroke="currentColor" stroke-linecap="round" stroke-width="6"
+                    style="transform: rotate(-90deg); transform-origin: 50% 50%;"/>
+          </svg>
+        </div>
+        <div>
+          <div class="text-xs text-gray-500">Fix availability rate (filtered)</div>
+          <div class="text-2xl font-semibold" x-text="fixRateFiltered + '%'" aria-live="polite"></div>
+          <div class="muted mt-1">% of filtered vulns with known fixes</div>
+        </div>
       </div>
-      <div class="card md:col-span-2">
+
+      <!-- Severity mix donut -->
+      <div class="card md:col-span-1">
+        <div class="text-sm font-medium mb-2">Severity mix (filtered)</div>
+        <div class="flex items-center gap-3">
+          <svg viewBox="0 0 44 44" width="88" height="88" aria-label="Severity donut">
+            <circle cx="22" cy="22" r="16" fill="none" class="text-gray-200" stroke="currentColor" stroke-width="8"/>
+            <template x-for="seg in donutSegments" :key="'seg-'+seg.label">
+              <circle cx="22" cy="22" r="16" fill="none"
+                      :stroke-dasharray="seg.dash"
+                      :stroke-dashoffset="seg.offset"
+                      :class="seg.cls"
+                      stroke="currentColor" stroke-width="8"
+                      style="transform: rotate(-90deg); transform-origin: 50% 50%;"/>
+            </template>
+          </svg>
+          <div class="text-xs space-y-1">
+            <template x-for="seg in donutLegend" :key="'leg-'+seg.label">
+              <div class="flex items-center gap-2">
+                <span class="inline-block w-3 h-3 rounded" :class="seg.bg"></span>
+                <span class="text-gray-600" x-text="`${seg.label}: ${seg.count}`"></span>
+              </div>
+            </template>
+          </div>
+        </div>
+        <div class="muted mt-2" x-text="filterSummary"></div>
+      </div>
+
+      <!-- Top CVEs (kept, now a single column) -->
+      <div class="card md:col-span-1">
         <div class="flex items-center justify-between mb-2">
           <div class="text-sm font-medium">Top CVEs</div>
           <button class="text-xs underline" @click="applyTopCVE()">Clear filter</button>
@@ -144,7 +188,7 @@
         <template x-if="!(metrics.topCVEs||[]).length">
           <div class="muted">No CVE IDs found.</div>
         </template>
-        <ul class="text-sm grid grid-cols-1 md:grid-cols-2 gap-3 max-h-80 overflow-auto">
+        <ul class="text-sm grid grid-cols-1 gap-3 max-h-80 overflow-auto">
           <template x-for="cve in (metrics.topCVEs || [])" :key="'cve-'+cve.id">
             <li class="border rounded-xl p-3">
               <div class="font-medium">
@@ -243,6 +287,44 @@
 
       metaText: "",
 
+      // ---- microchart helpers ----
+      ringCircumference: 2 * Math.PI * 18, // r=18 for ring gauge
+      get ringOffsetFix(){
+        const pct = Math.max(0, Math.min(100, this.fixRateFiltered)) / 100;
+        return this.ringCircumference * (1 - pct);
+      },
+
+      donutSegments: [],
+      donutLegend: [],
+      donutColors: {
+        CRITICAL: { cls: "text-red-600",   bg: "bg-red-600" },
+        HIGH:     { cls: "text-red-400",   bg: "bg-red-400" },
+        MEDIUM:   { cls: "text-amber-500", bg: "bg-amber-500" },
+        LOW:      { cls: "text-green-500", bg: "bg-green-500" },
+        INFO:     { cls: "text-gray-400",  bg: "bg-gray-400" },
+        UNKNOWN:  { cls: "text-gray-300",  bg: "bg-gray-300" },
+      },
+      buildSeverityDonut(){
+        const order = ['CRITICAL','HIGH','MEDIUM','LOW','INFO','UNKNOWN'];
+        const counts = this.sevCountsFiltered || {};
+        const total = Object.values(counts).reduce((a,b)=>a+(b||0),0) || 0;
+        const r = 16; const C = 2 * Math.PI * r;
+        let acc = 0;
+        this.donutSegments = []; this.donutLegend = [];
+        for (const label of order){
+          const count = counts[label] || 0;
+          if (!count) continue;
+          const pct = count / Math.max(1, total);
+          const dash = `${(pct*C).toFixed(2)} ${(C - pct*C).toFixed(2)}`;
+          const offset = (C * (1 - acc)).toFixed(2);
+          acc += pct;
+          const color = this.donutColors[label] || this.donutColors.UNKNOWN;
+          this.donutSegments.push({ label, dash, offset, cls: color.cls, count });
+          this.donutLegend.push({ label, bg: color.bg, count });
+        }
+      },
+      // ---- end microchart helpers ----
+
       async init(){
         const snap = await fetch("./parse-sboms.json?_=" + Date.now()).then(r => r.json());
         this.items = (snap.items || []).map((r, idx) => ({
@@ -308,6 +390,9 @@
         this.fixRateFiltered = this.filtered.length ? Math.round(100 * (hasFix/this.filtered.length)) : 0;
         this.perDatasetSev = this.groupByDatasetSev(this.filtered);
         this.filterSummary = this.buildFilterSummary();
+
+        // build microcharts
+        this.buildSeverityDonut();
 
         this.persistToHash();
       },
