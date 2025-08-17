@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "sync:sboms": "node scripts/fetch-artifacts.mjs",
-    "build:ui": "node parse-sbom.js",
+    "build:snapshot": "node scripts/parse-sboms.mjs",
+    "build": "npm run sync:sboms && npm run build:snapshot",
     "serve": "npx serve -s . -p 8080"
   },
   "dependencies": {
