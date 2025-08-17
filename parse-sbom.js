@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-// Build a fast index JSON from CycloneDX files under sboms/* (any subfolder).
-// Outputs:
-//   - public/sbom-index.json   (snapshot, metrics, deltas)
-//   - public/history.json      (rolling history for sparklines)
-//   - public/tracker.json      (per-vuln lifecycle for TTF & open age)
+// Build a single JSON (parse-sboms.json) from CycloneDX files under sboms/* (any subfolder).
+// No public/ folder, no extra files.
+//
+// Output (repo root):
+//   - parse-sboms.json  (snapshot with datasets, items, overall + simple metrics)
 
 import fs from "fs";
 import path from "path";
@@ -13,11 +13,8 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const SBOMS_DIR = path.join(__dirname, "sboms");
-const OUT_DIR   = path.join(__dirname, "public");
-const SNAP_FILE = path.join(OUT_DIR, "sbom-index.json");
-const HIST_FILE = path.join(OUT_DIR, "history.json");
-const TRK_FILE  = path.join(OUT_DIR, "tracker.json");
+const SBOMS_DIR   = path.join(__dirname, "sboms");
+const OUT_FILE    = path.join(__dirname, "parse-sboms.json");
 
 function readJSON(p) { try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return null; } }
 function writeJSON(p, obj) { fs.writeFileSync(p, JSON.stringify(obj, null, 2)); }
@@ -54,16 +51,6 @@ function countSeverities(items) {
     acc[s] = (acc[s] || 0) + 1;
     return acc;
   }, init);
-}
-function median(arr) {
-  const a = arr.filter(x => Number.isFinite(x)).sort((x,y)=>x-y);
-  if (!a.length) return null;
-  const m = Math.floor(a.length/2);
-  return a.length % 2 ? a[m] : (a[m-1]+a[m])/2;
-}
-function daysBetween(aISO, bISO) {
-  const a = new Date(aISO).getTime(), b = new Date(bISO).getTime();
-  return Math.max(0, Math.round((b - a) / (1000*60*60*24)));
 }
 
 function indexCycloneDX(json, datasetId) {
@@ -111,11 +98,6 @@ function indexCycloneDX(json, datasetId) {
   };
 }
 
-function makeKey(it) {
-  // Stable key per vuln occurrence
-  return `${it.dataset}::${it.id || (it.component || "comp")+"@"+(it.version||"")}`;
-}
-
 function buildTopCVEs(items) {
   const map = new Map();
   for (const it of items) {
@@ -131,11 +113,10 @@ function buildTopCVEs(items) {
   return [...map.values()]
     .map(x => ({ id:x.id, count:x.count, datasets:[...x.datasets].sort(), maxCVSS: x.maxCVSS, worstSeverityRank:x.worstSeverityRank }))
     .sort((a,b)=> (b.worstSeverityRank - a.worstSeverityRank) || (b.count - a.count) || (b.maxCVSS??0)-(a.maxCVSS??0))
-    .slice(0, 10); // top 10
+    .slice(0, 10);
 }
 
 function main() {
-  if (!fs.existsSync(OUT_DIR)) fs.mkdirSync(OUT_DIR, { recursive: true });
   const now = new Date().toISOString();
 
   // 1) Parse SBOMs
@@ -150,113 +131,35 @@ function main() {
   }
   const items = datasets.flatMap(d => d.items);
 
-  // 2) Update tracker (firstSeen/lastSeen/closedAt)
-  const tracker = readJSON(TRK_FILE) || { vulns: {} };
-  const currentKeys = new Set();
-  for (const it of items) {
-    const key = makeKey(it);
-    currentKeys.add(key);
-    if (!tracker.vulns[key]) tracker.vulns[key] = { firstSeen: now, lastSeen: now, closedAt: null, meta: { id: it.id, component: it.component, dataset: it.dataset} };
-    tracker.vulns[key].lastSeen = now;
-    tracker.vulns[key].closedAt = null;
-  }
-  for (const [key, rec] of Object.entries(tracker.vulns)) {
-    if (!currentKeys.has(key) && rec.closedAt === null) rec.closedAt = now;
-  }
-  const entries = Object.entries(tracker.vulns);
-  if (entries.length > 12000) {
-    const closed = entries.filter(([,r]) => r.closedAt).sort((a,b)=> new Date(b[1].closedAt)-new Date(a[1].closedAt));
-    const keepClosed = new Set(closed.slice(0,5000).map(([k])=>k));
-    for (const [k, r] of entries) {
-      if (r.closedAt && !keepClosed.has(k)) delete tracker.vulns[k];
-    }
-  }
-  writeJSON(TRK_FILE, tracker);
-
-  // 3) Metrics
+  // 2) Summaries
   const datasetSummaries = datasets.map(d => ({
     id: d.dataset,
     created: d.created,
     components: d.components,
     vulnerabilities: d.vulnerabilities,
     severityCounts: countSeverities(d.items)
-  }));
+  })).sort((a,b)=> String(a.id).localeCompare(String(b.id)));
+
   const overallSeverity = countSeverities(items);
-
-  const prev = readJSON(SNAP_FILE);
-  const prevMap = new Map();
-  if (prev?.datasets) for (const pd of prev.datasets) prevMap.set(pd.id, pd);
-
-  const datasetsWithDelta = datasetSummaries.map(d => {
-    const p = prevMap.get(d.id);
-    const delta = p ? (d.vulnerabilities - (p.vulnerabilities||0)) : null;
-    const severityDelta = {};
-    if (p?.severityCounts) for (const k of Object.keys(d.severityCounts)) severityDelta[k] = (d.severityCounts[k]||0)-(p.severityCounts[k]||0);
-    else for (const k of Object.keys(d.severityCounts)) severityDelta[k] = null;
-    return { ...d, delta, severityDelta };
-  });
-
-  const overallPrev = prev?.overall || null;
-  const overallDelta = overallPrev ? (items.length - (overallPrev.total||0)) : null;
-  const overallSevDelta = {};
-  if (overallPrev?.severityCounts) for (const k of Object.keys(overallSeverity)) overallSevDelta[k] = (overallSeverity[k]||0)-(overallPrev.severityCounts[k]||0);
-  else for (const k of Object.keys(overallSeverity)) overallSevDelta[k] = null;
-
   const fixAvailRate = items.length ? Math.round(100 * (items.filter(it => (it.fixedVersions||[]).length>0).length / items.length)) : 0;
-
-  const ttfDays = Object.values(tracker.vulns).filter(r => r.closedAt)
-    .map(r => daysBetween(r.firstSeen, r.closedAt));
-  const ttfMedianDays = median(ttfDays);
-
-  const nowISO = now;
-  const openAgeDays = Object.entries(tracker.vulns).filter(([k]) => currentKeys.has(k))
-    .map(([,r]) => daysBetween(r.firstSeen, nowISO));
-  const openAgeMedianDays = median(openAgeDays);
-
-  const oldestOpen = Object.entries(tracker.vulns).filter(([k]) => currentKeys.has(k))
-    .map(([k,r]) => ({ key:k, days: daysBetween(r.firstSeen, nowISO), meta:r.meta }))
-    .sort((a,b)=> b.days - a.days)
-    .slice(0,5);
-
-  const itemsWithAge = items.map(it => {
-    const rec = tracker.vulns[makeKey(it)];
-    return { ...it, firstSeen: rec?.firstSeen || null };
-  });
-
-  const topCVEs = buildTopCVEs(itemsWithAge);
+  const topCVEs = buildTopCVEs(items);
 
   const snapshot = {
     generatedAt: now,
-    datasets: datasetsWithDelta,
-    items: itemsWithAge,
+    datasets: datasetSummaries,
+    items,
     overall: {
-      total: itemsWithAge.length,
-      severityCounts: overallSeverity,
-      delta: overallDelta,
-      severityDelta: overallSevDelta
+      total: items.length,
+      severityCounts: overallSeverity
     },
     metrics: {
       fixAvailabilityRate: fixAvailRate,
-      ttfMedianDays,
-      openAgeMedianDays,
-      oldestOpen,
       topCVEs
     }
   };
-  writeJSON(SNAP_FILE, snapshot);
-  console.log(`Wrote ${SNAP_FILE} with ${itemsWithAge.length} vulns across ${datasets.length} dataset(s).`);
 
-  // 4) History for sparklines
-  const hist = readJSON(HIST_FILE) || { entries: [] };
-  const perDataset = {};
-  for (const d of datasetSummaries) perDataset[d.id] = d.severityCounts;
-  hist.entries.push({
-    generatedAt: now,
-    overall: { total: snapshot.overall.total, severityCounts: snapshot.overall.severityCounts },
-    datasets: perDataset
-  });
-  if (hist.entries.length > 50) hist.entries = hist.entries.slice(-50);
-  writeJSON(HIST_FILE, hist);
-  console.log(`Updated ${HIST_FILE} (entries: ${hist.entries.length}).`);
+  writeJSON(OUT_FILE, snapshot);
+  console.log(`Wrote ${OUT_FILE} with ${items.length} vulns across ${datasets.length} dataset(s).`);
 }
+
 main();
