@@ -22,8 +22,10 @@
   </style>
 </head>
 <body class="h-full">
-  <!-- Alpine root wrapper -->
+
+  <!-- Alpine root wrapper: EVERYTHING with x-* lives inside this -->
   <div id="app" x-data="app()" x-init="init()">
+
     <!-- Top bar -->
     <header class="sticky top-0 z-40 bg-white/90 backdrop-blur border-b">
       <div class="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3">
@@ -87,9 +89,8 @@
     </header>
 
     <main class="max-w-7xl mx-auto px-4 py-6" x-cloak>
-      <!-- Summary row (aligned to 3 columns to match next section) -->
+      <!-- Summary row -->
       <section class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6" aria-live="polite">
-        <!-- Left summary spans 2/3 -->
         <div class="lg:col-span-2 grid grid-cols-2 md:grid-cols-4 gap-3">
           <div class="card col-span-2">
             <div class="text-xs text-gray-500">Total vulnerabilities</div>
@@ -104,7 +105,6 @@
           </template>
         </div>
 
-        <!-- Right: Datasets -->
         <div class="card">
           <div class="text-sm font-medium mb-3">Datasets in view</div>
           <template x-if="Object.keys(perDatasetSev).length === 0">
@@ -132,11 +132,9 @@
         </div>
       </section>
 
-      <!-- Metrics + Top CVEs (3 equal columns) -->
+      <!-- Metrics + Top CVEs -->
       <section class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 md:[grid-auto-rows:1fr] md:items-stretch">
-        <!-- Column 1 -->
         <div class="flex flex-col gap-4 h-full">
-          <!-- Fix ring -->
           <div class="card h-full flex items-start gap-3" x-show="fixRateFiltered > 0">
             <div class="shrink-0">
               <svg viewBox="0 0 44 44" width="64" height="64" aria-label="Fix availability">
@@ -156,7 +154,6 @@
             </div>
           </div>
 
-          <!-- Fix status by severity (when 0%) -->
           <template x-if="fixRateFiltered === 0">
             <div class="card">
               <div class="text-sm font-medium mb-2">Fix status by severity</div>
@@ -175,7 +172,6 @@
             </div>
           </template>
 
-          <!-- Direct vs transitive -->
           <div class="card">
             <div class="text-sm font-medium mb-2">Direct vs transitive</div>
             <div class="flex items-center gap-3">
@@ -188,7 +184,6 @@
           </div>
         </div>
 
-        <!-- Column 2 -->
         <div class="flex flex-col gap-4 h-full">
           <div class="card h-full flex items-start gap-4">
             <div class="shrink-0">
@@ -234,7 +229,6 @@
             </div>
           </div>
 
-          <!-- Top licenses -->
           <div class="card">
             <div class="text-sm font-medium mb-2">Top licenses</div>
             <div class="space-y-2">
@@ -252,7 +246,6 @@
           </div>
         </div>
 
-        <!-- Column 3: Top CVEs -->
         <div class="card">
           <div class="flex items-center justify-between mb-2">
             <div class="text-sm font-medium">Top CVEs</div>
@@ -381,6 +374,7 @@
         </div>
       </section>
     </main>
+
   </div><!-- /#app -->
 
   <script>
@@ -407,7 +401,6 @@
       metaText: "",
 
       /* ------- micro-chart helpers ------- */
-      // ring gauge
       ringCircumference: 2 * Math.PI * 18, // r=18
       get ringOffsetFix(){
         const pct = Math.max(0, Math.min(100, this.fixRateFiltered)) / 100;
@@ -420,7 +413,6 @@
         return '#ef4444';
       },
 
-      // severity donut
       donutSegs: {
         CRITICAL:{dash:'0 1000', offset:0, color:'#dc2626', count:0},
         HIGH:{dash:'0 1000', offset:0, color:'#f87171', count:0},
@@ -549,7 +541,7 @@
         this.directShare = { direct, trans, pct: Math.round(100*direct/total) };
       },
 
-      // dropdown options (hide INFO/UNKNOWN unless present without severity filter)
+      // dropdown options
       updateSeverityOptions(){
         const q = this.q.trim().toLowerCase();
         const ds = this.dataset, fix = this.fix, cv = Number(this.cvssMin)||0, only = this.onlyDirect;
@@ -733,14 +725,12 @@
         this.page = Number(s.get("p") || this.page || 0);
       },
 
-      // Top CVE helper
       applyTopCVE(id){
         if (!id) { this.q=""; this.applyFilters(true); return; }
         this.q = id;
         this.applyFilters(true);
       },
 
-      // view save/load
       saveView(){ try{ localStorage.setItem('sbom_view', location.hash); alert('View saved.'); }catch{} },
       loadView(){ try{ const h = localStorage.getItem('sbom_view'); if(h){ location.hash=h; this.restoreFromHash(); this.applyFilters(true);} }catch{} }
     }
