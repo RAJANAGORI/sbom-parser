@@ -6,20 +6,19 @@
   <title>SBOM Explorer</title>
   <meta name="color-scheme" content="light" />
 
-  <!-- Fast + tiny deps only -->
+  <!-- Minimal, fast CDN libs -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
 
   <style>
     .card{ @apply bg-white border rounded-2xl shadow-sm p-4; }
-    .chip{ @apply text-xs px-2 py-1 rounded-full border; }
+    .chip{ @apply text-xs px-2 py-0.5 rounded; }
     [x-cloak]{ display:none !important; }
     .muted{ @apply text-xs text-gray-500; }
     .skeleton{ @apply animate-pulse bg-gray-200 rounded; }
     a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
     .bar { @apply h-2 w-full bg-gray-200 rounded; }
     .bar-fill { @apply h-2 rounded; background: linear-gradient(90deg, #ef4444, #f59e0b, #10b981); }
-    mark{ @apply bg-yellow-200 rounded px-0.5; }
   </style>
 </head>
 <body class="h-full">
@@ -28,33 +27,17 @@
     <div class="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3">
       <h1 class="text-xl font-semibold">SBOM Explorer</h1>
       <span class="text-xs text-gray-500" x-text="metaText" aria-live="polite"></span>
-
-      <div class="ml-auto flex items-center gap-2">
-        <!-- Saved views dropdown -->
-        <div class="relative" @keydown.escape="showViews=false">
-          <button class="px-3 py-2 border rounded-xl" @click="showViews=!showViews">Saved Views</button>
-          <div class="absolute right-0 z-10 bg-white shadow border rounded-xl mt-1 w-56" x-show="showViews" x-cloak>
-            <template x-if="!views.length"><div class="p-3 text-sm text-gray-500">No saved views.</div></template>
-            <template x-for="(v,i) in views" :key="i">
-              <div class="flex items-center">
-                <button class="flex-1 text-left px-3 py-2 hover:bg-gray-50 text-sm" @click="loadSaved(i)" x-text="v.name"></button>
-                <button class="px-2 text-gray-500" title="Delete" @click="views.splice(i,1);localStorage.setItem('sbom_views',JSON.stringify(views))">✕</button>
-              </div>
-            </template>
-            <div class="border-t"></div>
-            <button class="block w-full text-left px-3 py-2 text-blue-600 text-sm" @click="saveCurrent()">Save current…</button>
-          </div>
-        </div>
-
-        <button class="px-3 py-2 border rounded-xl" @click="exportLite()">Quick CSV</button>
+      <div class="ml-auto flex gap-2">
         <button class="px-3 py-2 border rounded-xl" @click="exportCSV()">Export CSV</button>
+        <button class="px-3 py-2 border rounded-xl" @click="saveView()">Save View</button>
+        <button class="px-3 py-2 border rounded-xl" @click="loadView()">Load View</button>
       </div>
     </div>
 
     <!-- Filters -->
     <div class="max-w-7xl mx-auto px-4 pb-3 flex items-center gap-2 flex-wrap">
-      <input id="qbox" x-model="q" @input="applyFilters(true)" placeholder="Search (component, purl, vuln id, license) – press / to focus"
-        class="w-96 px-3 py-2 border rounded-xl focus:outline-none focus:ring" />
+      <input x-model="q" @input="applyFilters(true)" placeholder="Search (component, purl, vuln id, license)"
+        class="w-72 px-3 py-2 border rounded-xl focus:outline-none focus:ring" />
 
       <select x-model="dataset" @change="applyFilters(true)" class="px-3 py-2 border rounded-xl">
         <option value="">All datasets</option>
@@ -96,44 +79,18 @@
         </select>
         <button class="px-2 py-1 border rounded-lg" @click="sortDir = sortDir==='desc'?'asc':'desc'; applyFilters()"
                 x-text="sortDir==='desc' ? '↓' : '↑'"></button>
-
-        <label class="ml-3">Density:
-          <select x-model="density" class="px-2 py-1 border rounded-lg">
-            <option value="comfy">Comfortable</option>
-            <option value="compact">Compact</option>
-          </select>
-        </label>
-      </div>
-    </div>
-
-    <!-- Quick chips -->
-    <div class="max-w-7xl mx-auto px-4 pb-3">
-      <div class="flex flex-wrap gap-2">
-        <button class="chip bg-gray-50 hover:bg-gray-100" @click="severity='CRITICAL';applyFilters(true)">CRITICAL (<span x-text="sevCountsFiltered.CRITICAL||0"></span>)</button>
-        <button class="chip bg-gray-50 hover:bg-gray-100" @click="severity='HIGH';applyFilters(true)">HIGH (<span x-text="sevCountsFiltered.HIGH||0"></span>)</button>
-        <button class="chip bg-gray-50 hover:bg-gray-100" @click="severity='MEDIUM';applyFilters(true)">MEDIUM (<span x-text="sevCountsFiltered.MEDIUM||0"></span>)</button>
-        <button class="chip bg-gray-50 hover:bg-gray-100" @click="severity='LOW';applyFilters(true)">LOW (<span x-text="sevCountsFiltered.LOW||0"></span>)</button>
-        <button class="chip" :class="onlyDirect?'bg-emerald-100 border-emerald-300':'bg-gray-50'" @click="onlyDirect=!onlyDirect;applyFilters(true)">Only direct</button>
-        <button class="chip bg-white" @click="clearAll()">Clear</button>
-        <div class="ml-auto flex gap-3 text-xs text-gray-600 items-center">
-          <span><span class="inline-block w-3 h-3 rounded align-middle bg-red-600"></span> CRITICAL</span>
-          <span><span class="inline-block w-3 h-3 rounded align-middle bg-red-200"></span> HIGH</span>
-          <span><span class="inline-block w-3 h-3 rounded align-middle bg-amber-100"></span> MED</span>
-          <span><span class="inline-block w-3 h-3 rounded align-middle bg-green-100"></span> LOW</span>
-        </div>
       </div>
     </div>
   </header>
 
   <main class="max-w-7xl mx-auto px-4 py-6" x-cloak>
-    <!-- Top summary + sticky dataset panel -->
+    <!-- Always-on summaries (no charts) -->
     <section class="grid grid-cols-1 lg:grid-cols-12 gap-4 mb-6" aria-live="polite">
       <div class="lg:col-span-7 grid grid-cols-2 md:grid-cols-4 gap-3">
         <div class="card col-span-2">
           <div class="text-xs text-gray-500">Total Vulnerabilities (filtered)</div>
           <div class="text-2xl font-semibold" x-text="filtered.length"></div>
           <div class="muted mt-1" x-text="filterSummary"></div>
-          <template x-if="busy"><div class="skeleton h-6 w-32 mt-2"></div></template>
         </div>
         <template x-for="sev in ['CRITICAL','HIGH','MEDIUM','LOW']" :key="'sev-'+sev">
           <div class="card">
@@ -142,49 +99,43 @@
             <div class="text-xs mt-1 text-gray-400">filtered</div>
           </div>
         </template>
-
-        <!-- Fix rate -->
-        <div class="card col-span-2">
-          <div class="text-xs text-gray-500">Fix availability rate (filtered)</div>
-          <div class="text-2xl font-semibold" x-text="fixRateFiltered + '%'"></div>
-          <div class="muted mt-1">% of filtered vulns with known fixes</div>
-        </div>
       </div>
 
-      <!-- Sticky datasets panel -->
-      <aside class="lg:col-span-5 lg:sticky lg:top-20 lg:self-start">
-        <div class="card">
-          <div class="text-sm font-medium mb-3">Datasets (filtered presence)</div>
-          <template x-if="Object.keys(perDatasetSev).length === 0">
-            <div class="muted">No datasets in the current filter.</div>
-          </template>
-          <div class="space-y-3 max-h-72 overflow-auto pr-1">
-            <template x-for="(v, name) in perDatasetSev" :key="'ds-'+name">
-              <div class="pb-2 border-b last:border-0">
-                <div class="flex items-center justify-between text-sm">
-                  <div class="font-medium">
-                    <span class="px-2 py-0.5 bg-gray-100 rounded-full" x-text="name"></span>
-                  </div>
-                  <div class="text-xs text-gray-500" x-text="`${v.total} vulns`"></div>
-                </div>
-                <div class="bar mt-1">
-                  <div class="bar-fill" :style="`width:${Math.min(100, (v.total/Math.max(1, filtered.length))*100)}%`"></div>
-                </div>
-                <div class="mt-1 flex gap-2 text-[11px] text-gray-600">
-                  <span>CRIT: <b x-text="v.CRITICAL||0"></b></span>
-                  <span>HIGH: <b x-text="v.HIGH||0"></b></span>
-                  <span>MED: <b x-text="v.MEDIUM||0"></b></span>
-                  <span>LOW: <b x-text="v.LOW||0"></b></span>
-                </div>
+      <!-- Per-dataset compact summary with bar -->
+      <div class="card lg:col-span-5">
+        <div class="text-sm font-medium mb-3">Datasets (filtered presence)</div>
+        <template x-if="Object.keys(perDatasetSev).length === 0">
+          <div class="muted">No datasets in the current filter.</div>
+        </template>
+        <div class="space-y-3 max-h-60 overflow-auto">
+          <template x-for="(v, name) in perDatasetSev" :key="'ds-'+name">
+            <div>
+              <div class="flex items-center justify-between text-sm">
+                <div class="font-medium" x-text="name"></div>
+                <div class="text-xs text-gray-500" x-text="`${v.total} vulns`"></div>
               </div>
-            </template>
-          </div>
+              <div class="bar">
+                <div class="bar-fill" :style="`width:${Math.min(100, (v.total/Math.max(1, filtered.length))*100)}%`"></div>
+              </div>
+              <div class="mt-1 flex gap-2 text-[11px] text-gray-600">
+                <span>CRIT: <b x-text="v.CRITICAL||0"></b></span>
+                <span>HIGH: <b x-text="v.HIGH||0"></b></span>
+                <span>MED: <b x-text="v.MEDIUM||0"></b></span>
+                <span>LOW: <b x-text="v.LOW||0"></b></span>
+              </div>
+            </div>
+          </template>
         </div>
-      </aside>
+      </div>
     </section>
 
-    <!-- Top CVEs -->
-    <section class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+    <!-- Metrics + Top CVEs (always populated if present in snapshot) -->
+    <section class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <div class="card">
+        <div class="text-xs text-gray-500">Fix availability rate (filtered)</div>
+        <div class="text-2xl font-semibold" x-text="fixRateFiltered + '%'"></div>
+        <div class="muted mt-1">% of filtered vulns with known fixes</div>
+      </div>
       <div class="card md:col-span-2">
         <div class="flex items-center justify-between mb-2">
           <div class="text-sm font-medium">Top CVEs</div>
@@ -193,7 +144,7 @@
         <template x-if="!(metrics.topCVEs||[]).length">
           <div class="muted">No CVE IDs found.</div>
         </template>
-        <ul class="text-sm grid grid-cols-1 md:grid-cols-2 gap-3 max-h-64 overflow-auto">
+        <ul class="text-sm grid grid-cols-1 md:grid-cols-2 gap-3 max-h-80 overflow-auto">
           <template x-for="cve in (metrics.topCVEs || [])" :key="'cve-'+cve.id">
             <li class="border rounded-xl p-3">
               <div class="font-medium">
@@ -210,68 +161,48 @@
       </div>
     </section>
 
-    <!-- Empty state -->
-    <template x-if="!filtered.length">
-      <div class="card mb-6">
-        <div class="font-medium mb-1">No results</div>
-        <div class="muted">Try clearing filters or lowering CVSS min.</div>
-        <div class="mt-2 flex gap-2">
-          <button class="chip bg-white" @click="clearAll()">Clear all</button>
-        </div>
-      </div>
-    </template>
-
     <!-- Vulnerabilities table -->
     <section>
       <div class="mb-2 text-sm text-gray-600">
         <span x-text="`Showing ${filtered.length} of ${items.length} vulnerabilities`"></span>
       </div>
-
       <div class="overflow-x-auto bg-white border rounded-2xl shadow-sm">
         <table class="min-w-full text-sm">
-          <thead class="bg-gray-50 sticky top-0 z-10">
+          <thead class="bg-gray-50">
             <tr class="text-left">
-              <th :class="thCls">Severity</th>
-              <th :class="thCls">CVSS</th>
-              <th :class="thCls">Component</th>
-              <th :class="thCls">Version</th>
-              <th :class="thCls">License</th>
-              <th :class="thCls">Vuln ID</th>
-              <th :class="thCls">Dataset</th>
-              <th :class="thCls">Links</th>
+              <th class="px-4 py-3">Severity</th>
+              <th class="px-4 py-3">CVSS</th>
+              <th class="px-4 py-3">Component</th>
+              <th class="px-4 py-3">Version</th>
+              <th class="px-4 py-3">License</th>
+              <th class="px-4 py-3">Vuln ID</th>
+              <th class="px-4 py-3">Dataset</th>
+              <th class="px-4 py-3">Links</th>
             </tr>
           </thead>
           <tbody>
             <template x-for="row in paged" :key="row._key">
-              <tr :class="['border-t hover:bg-gray-50', density==='compact'?'text-[13px]':'']">
-                <td :class="tdCls">
+              <tr class="border-t hover:bg-gray-50">
+                <td class="px-4 py-2">
                   <span class="px-2 py-0.5 rounded-lg text-xs font-semibold" :class="badge(row.severity)" x-text="row.severity || 'UNKNOWN'"></span>
                 </td>
-                <td :class="tdCls" x-text="row.cvss ?? '-'"></td>
-                <td :class="tdCls">
-                  <div class="font-medium" x-html="highlight(row.component)"></div>
-                  <div class="text-xs text-gray-500 truncate max-w-[28rem]" x-html="highlight(row.purl)"></div>
+                <td class="px-4 py-2" x-text="row.cvss ?? '-'"></td>
+                <td class="px-4 py-2">
+                  <div class="font-medium" x-text="row.component || '-'"></div>
+                  <div class="text-xs text-gray-500 truncate max-w-[28rem]" x-text="row.purl"></div>
                 </td>
-                <td :class="tdCls" x-text="row.version || '-'"></td>
-                <td :class="tdCls">
+                <td class="px-4 py-2" x-text="row.version || '-'"></td>
+                <td class="px-4 py-2">
                   <template x-for="(l,i) in (row.licenses || [])" :key="row._key+'-lic-'+i">
                     <span class="mr-1 px-1.5 py-0.5 bg-gray-100 rounded" x-text="l"></span>
                   </template>
                 </td>
-                <td :class="tdCls">
-                  <div class="group relative inline-flex items-center gap-2">
-                    <span x-html="highlight(row.id)"></span>
-                    <div class="opacity-0 group-hover:opacity-100 transition flex gap-1">
-                      <button title="Copy ID" @click="navigator.clipboard.writeText(row.id)">📋</button>
-                      <button title="Filter by this ID" @click="q=row.id;applyFilters(true)">🎯</button>
-                    </div>
-                  </div>
-                </td>
-                <td :class="tdCls">
-                  <span class="text-xs px-2 py-1 bg-gray-100 rounded-full" x-text="row.dataset"></span>
+                <td class="px-4 py-2" x-text="row.id || '-'"></td>
+                <td class="px-4 py-2">
+                  <span class="text-xs px-2 py-1 bg-gray-100 rounded" x-text="row.dataset"></span>
                   <template x-if="row.direct"><span class="ml-1 text-[10px] px-1 py-0.5 bg-emerald-100 text-emerald-700 rounded">direct</span></template>
                 </td>
-                <td :class="tdCls">
+                <td class="px-4 py-2">
                   <template x-for="(u,i) in (row.urls || [])" :key="row._key+'-url-'+i">
                     <a class="text-blue-600 underline mr-2" :href="u" target="_blank" rel="noopener" x-text="`ref${i+1}`"></a>
                   </template>
@@ -282,14 +213,9 @@
         </table>
       </div>
 
-      <div class="mt-4 flex flex-wrap items-center gap-3 justify-between">
+      <div class="mt-4 flex items-center justify-between">
         <div class="text-sm text-gray-600">Page <span x-text="page+1"></span> / <span x-text="pages"></span></div>
-        <div class="flex items-center gap-2">
-          <label class="text-sm">Rows per page:
-            <select x-model.number="perPage" @change="paginate()" class="border rounded px-2 py-1">
-              <option>25</option><option>50</option><option>100</option><option>200</option>
-            </select>
-          </label>
+        <div class="flex gap-2">
           <button class="px-3 py-1 border rounded-lg" :disabled="page===0" @click="prev()">Prev</button>
           <button class="px-3 py-1 border rounded-lg" :disabled="page+1>=pages" @click="next()">Next</button>
         </div>
@@ -300,12 +226,10 @@
   <script>
   function app(){
     return {
-      // ---------- state ----------
+      // state from parse-sboms.json
       items: [], filtered: [], paged: [], datasets: [],
       overall: { total: 0, severityCounts: {} },
       metrics: { fixAvailabilityRate:0, topCVEs:[] },
-      views: JSON.parse(localStorage.getItem('sbom_views')||'[]'),
-      showViews:false, busy:false,
 
       // filters
       dataset: "", q: "", severity: "", fix: "", cvssMin: 0, onlyDirect: false,
@@ -315,15 +239,11 @@
       sevCountsFiltered: {}, fixRateFiltered: 0, filterSummary: "", perDatasetSev: {},
 
       // sort/paging
-      sortKey: "severityRank", sortDir: "desc",
-      page: 0, perPage: 50, pages: 0,
-      density: "comfy",
-      thCls: "px-4 py-2", get tdCls(){ return ['px-4', this.density==='compact'?'py-1':'py-3'].join(' '); },
+      sortKey: "severityRank", sortDir: "desc", page: 0, perPage: 50, pages: 0,
 
       metaText: "",
 
       async init(){
-        window.__APP__ = this; // for global shortcuts
         const snap = await fetch("./parse-sboms.json?_=" + Date.now()).then(r => r.json());
         this.items = (snap.items || []).map((r, idx) => ({
           ...r,
@@ -339,18 +259,9 @@
 
         this.restoreFromHash();
         this.applyFilters(true);
-
-        // Global keyboard shortcuts
-        document.addEventListener('keydown', (e)=>{
-          if (e.target && ['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
-          if (e.key==='/' && !e.metaKey && !e.ctrlKey){ e.preventDefault(); document.getElementById('qbox').focus(); }
-          if (e.key==='Escape'){ this.q=''; this.applyFilters(true); }
-          if (e.key==='['){ this.prev(); }
-          if (e.key===']'){ this.next(); }
-        });
       },
 
-      // ---------- utils ----------
+      // utils
       badge(sev){
         const s = (sev||"").toUpperCase();
         const base = "px-2 py-0.5 rounded-lg text-xs font-semibold";
@@ -360,22 +271,8 @@
         if (s==="LOW") return base+" bg-green-100 text-green-800";
         return base+" bg-gray-100 text-gray-800";
       },
-      highlight(txt){
-        if (!this.q) return txt ?? '';
-        const esc = this.q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-        try {
-          return String(txt ?? '').replace(new RegExp(`(${esc})`,'ig'), '<mark>$1</mark>');
-        } catch { return txt ?? ''; }
-      },
 
-      clearAll(){
-        this.q=""; this.dataset=""; this.severity=""; this.fix=""; this.cvssMin=0; this.onlyDirect=false; this.applyFilters(true);
-      },
-
-      // ---------- filters ----------
-      async applyFilters(){
-        this.busy = true; await this.$nextTick();
-
+      applyFilters(buildGroup=false){
         const q = this.q.trim().toLowerCase();
         const sev = this.severity, fix = this.fix, cv = Number(this.cvssMin) || 0, ds = this.dataset;
 
@@ -393,12 +290,17 @@
           return true;
         });
 
+        // sorting
+        const key = this.sortKey;
         const dir = this.sortDir === "desc" ? -1 : 1;
         this.filtered.sort((a,b)=>{
-          const A = (a[this.sortKey] ?? ""), B = (b[this.sortKey] ?? "");
+          const A = (a[key] ?? ""), B = (b[key] ?? "");
           if (typeof A === "number" && typeof B === "number") return (A-B)*dir;
           return String(A).localeCompare(String(B)) * dir;
         });
+
+        // paginate
+        this.page = 0; this.paginate();
 
         // derive filtered metrics
         this.sevCountsFiltered = this.countSev(this.filtered);
@@ -407,22 +309,12 @@
         this.perDatasetSev = this.groupByDatasetSev(this.filtered);
         this.filterSummary = this.buildFilterSummary();
 
-        this.page = 0; this.paginate();
         this.persistToHash();
-
-        this.busy = false;
       },
-
       paginate(){
         this.pages = Math.max(1, Math.ceil(this.filtered.length / this.perPage));
         const start = this.page * this.perPage;
-        const slice = this.filtered.slice(start, start + Number(this.perPage));
-        // progressive render for snappier feel on large pages
-        this.paged = [];
-        const step = 50;
-        for (let i=0;i<slice.length;i+=step){
-          setTimeout(()=>{ this.paged.push(...slice.slice(i,i+step)); }, (i/step)*10);
-        }
+        this.paged = this.filtered.slice(start, start + this.perPage);
       },
       next(){ if (this.page+1 < this.pages){ this.page++; this.paginate(); this.persistToHash(); } },
       prev(){ if (this.page>0){ this.page--; this.paginate(); this.persistToHash(); } },
@@ -455,16 +347,7 @@
         return bits.length ? bits.join(' · ') : 'no filters';
       },
 
-      // CSVs
-      exportLite(){
-        const cols = ['severity','id','dataset','component'];
-        const lines = [cols.join(',')];
-        for(const r of this.filtered){
-          lines.push(cols.map(k => `"${String(r[k]??'').replace(/"/g,'""')}"`).join(','));
-        }
-        const blob = new Blob([lines.join("\n")],{type:"text/csv;charset=utf-8;"});
-        const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='sbom-lite.csv'; a.click(); URL.revokeObjectURL(url);
-      },
+      // CSV
       exportCSV(){
         const rows = this.filtered;
         if (!rows.length) { alert("No rows to export."); return; }
@@ -484,27 +367,13 @@
         URL.revokeObjectURL(url);
       },
 
-      // Saved views
-      saveCurrent(){
-        const name = prompt('Name this view');
-        if(!name) return;
-        const state = { q:this.q,dataset:this.dataset,severity:this.severity,fix:this.fix,cvssMin:this.cvssMin,onlyDirect:this.onlyDirect,sortKey:this.sortKey,sortDir:this.sortDir,perPage:this.perPage,density:this.density };
-        this.views=[...this.views,{name,state}];
-        localStorage.setItem('sbom_views', JSON.stringify(this.views));
-        this.showViews=false;
-      },
-      loadSaved(i){
-        Object.assign(this, this.views[i].state);
-        this.applyFilters(true);
-        this.showViews=false;
-      },
-
       // URL state
       persistToHash(){
         const h = new URLSearchParams({
           q: this.q || "", ds: this.dataset || "", sev: this.severity || "",
-          fix: this.fix || "", cvss: String(this.cvssMin || 0), dir: this.sortDir, key: this.sortKey,
-          dirc: this.onlyDirect ? "1" : "0", p: String(this.page), pp: String(this.perPage), d: this.density
+          fix: this.fix || "", cvss: String(this.cvssMin || 0),
+          dir: this.sortDir, key: this.sortKey, dirc: this.onlyDirect ? "1" : "0",
+          p: String(this.page)
         }).toString();
         location.hash = h;
       },
@@ -519,8 +388,6 @@
         this.sortKey = s.get("key") || this.sortKey;
         this.onlyDirect = s.get("dirc")==="1" ? true : this.onlyDirect;
         this.page = Number(s.get("p") || this.page || 0);
-        this.perPage = Number(s.get("pp") || this.perPage || 50);
-        this.density = s.get("d") || this.density;
       },
 
       // Top CVE helper
