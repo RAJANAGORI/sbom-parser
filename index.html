@@ -1,38 +1,46 @@
 <!doctype html>
-<html lang="en" x-data="app()" x-init="init()" class="h-full bg-gray-50">
+<html lang="en" x-data="app()" x-init="init()" :class="{'dark': darkMode}" class="h-full bg-gray-50 dark:bg-gray-900">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>SBOM Explorer</title>
-  <meta name="color-scheme" content="light" />
+  <meta name="color-scheme" content="light dark" />
   <!-- Minimal, fast CDN libs -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
   <style>
-    .card{ @apply bg-white border rounded-2xl shadow-sm p-4; }
+    .card{ @apply bg-white dark:bg-gray-800 dark:border-gray-700 border rounded-2xl shadow-sm p-4; }
     .chip{ @apply text-xs px-2 py-0.5 rounded; }
     [x-cloak]{ display:none !important; }
-    .muted{ @apply text-xs text-gray-500; }
-    .skeleton{ @apply animate-pulse bg-gray-200 rounded; }
-    a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
-    .bar { @apply h-2 w-full bg-gray-200 rounded; }
+    .muted{ @apply text-xs text-gray-500 dark:text-gray-400; }
+    .bar { @apply h-2 w-full bg-gray-200 dark:bg-gray-700 rounded; }
     .bar-fill { @apply h-2 rounded; background: linear-gradient(90deg, #ef4444, #f59e0b, #10b981); }
+    @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
   </style>
 </head>
-<body class="h-full">
+<body class="h-full text-gray-900 dark:text-gray-100">
   <!-- Top bar -->
-  <header class="sticky top-0 z-40 bg-white/90 backdrop-blur border-b">
-    <div class="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3">
-      <h1 class="text-xl font-semibold">SBOM Explorer</h1>
-      <span class="text-xs text-gray-500" x-text="metaText" aria-live="polite"></span>
-      <div class="ml-auto flex gap-2">
-        <button class="px-3 py-2 border rounded-xl" @click="exportCSV()">Export CSV</button>
-        <button class="px-3 py-2 border rounded-xl" @click="saveView()">Save View</button>
-        <button class="px-3 py-2 border rounded-xl" @click="loadView()">Load View</button>
+  <header class="sticky top-0 z-40 bg-white/90 dark:bg-gray-900/90 backdrop-blur border-b dark:border-gray-800">
+    <div class="max-w-7xl mx-auto px-3 sm:px-4 py-3 flex items-center gap-2">
+      <h1 class="text-base sm:text-xl font-semibold">SBOM Explorer</h1>
+      <span class="hidden sm:inline text-xs text-gray-500 dark:text-gray-400" x-text="metaText" aria-live="polite"></span>
+      <div class="ml-auto flex items-center gap-2">
+        <button class="hidden sm:inline px-3 py-2 border rounded-xl" @click="exportCSV()">Export CSV</button>
+        <button class="hidden sm:inline px-3 py-2 border rounded-xl" @click="saveView()">Save View</button>
+        <button class="hidden sm:inline px-3 py-2 border rounded-xl" @click="loadView()">Load View</button>
+
+        <!-- Dark mode toggle -->
+        <button class="px-3 py-2 border rounded-xl" @click="darkMode = !darkMode" :aria-pressed="darkMode">
+          <span x-show="!darkMode">🌙</span><span x-show="darkMode">☀️</span>
+        </button>
+
+        <!-- Mobile Filters button -->
+        <button class="sm:hidden px-3 py-2 border rounded-xl" @click="filtersOpen = true" aria-label="Open filters">Filters</button>
       </div>
     </div>
-    <!-- Filters -->
-    <div class="max-w-7xl mx-auto px-4 pb-3 flex items-center gap-2 flex-wrap">
+
+    <!-- Filters bar (desktop) -->
+    <div class="max-w-7xl mx-auto px-3 sm:px-4 pb-3 items-center gap-2 flex-wrap hidden sm:flex">
       <!-- Search with typeahead -->
       <div class="relative w-72">
         <input
@@ -43,15 +51,16 @@
           @keydown.up.prevent="moveSel(-1)"
           @keydown.enter.prevent="applySel()"
           @keydown.escape.prevent="hideSuggest()"
+          inputmode="search" autocomplete="off"
           placeholder="Search (component, purl, vuln id, license)"
-          class="w-full px-3 py-2 border rounded-xl focus:outline-none focus:ring"
+          class="w-full px-3 py-2 border rounded-xl focus:outline-none focus:ring dark:bg-gray-900 dark:border-gray-700"
           aria-autocomplete="list" aria-expanded="true" aria-haspopup="listbox"
         />
         <!-- suggestions -->
         <div
           x-show="showSuggest && suggestions.length"
           @mousedown.prevent
-          class="absolute z-50 mt-1 w-full bg-white border rounded-xl shadow-lg max-h-72 overflow-auto"
+          class="absolute z-50 mt-1 w-full bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-xl shadow-lg max-h-72 overflow-auto"
           role="listbox"
         >
           <template x-for="(s, i) in suggestions" :key="s.key">
@@ -59,11 +68,11 @@
               type="button"
               @click="pick(s)"
               :class="['w-full text-left px-3 py-2 flex items-center gap-2',
-                       i===selIdx ? 'bg-blue-50' : 'hover:bg-gray-50']"
+                       i===selIdx ? 'bg-blue-50 dark:bg-blue-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-700']"
               :aria-selected="i===selIdx"
               role="option"
             >
-              <span class="text-[11px] px-1.5 py-0.5 rounded bg-gray-100" x-text="s.group"></span>
+              <span class="text-[11px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700" x-text="s.group"></span>
               <span class="truncate flex-1" x-text="s.label"></span>
               <span class="text-xs text-gray-400" x-text="s.meta"></span>
             </button>
@@ -71,64 +80,149 @@
         </div>
       </div>
 
-      <select x-model="dataset" @change="applyFilters(true)" class="px-3 py-2 border rounded-xl">
+      <select x-model="dataset" @change="applyFilters(true)" class="px-3 py-2 border rounded-xl dark:bg-gray-900 dark:border-gray-700">
         <option value="">All datasets</option>
         <template x-for="d in datasets" :key="d._key">
           <option :value="d.id" x-text="`${d.id} (${d.vulnerabilities})`"></option>
         </template>
       </select>
+
       <!-- Dynamic severities: INFO/UNKNOWN hidden if zero in current view -->
-      <select x-model="severity" @change="applyFilters(true)" class="px-3 py-2 border rounded-xl">
+      <select x-model="severity" @change="applyFilters(true)" class="px-3 py-2 border rounded-xl dark:bg-gray-900 dark:border-gray-700">
         <option value="">All severities</option>
         <template x-for="s in sevOpts" :key="s">
           <option :value="s" x-text="s"></option>
         </template>
       </select>
-      <select x-model="fix" @change="applyFilters(true)" class="px-3 py-2 border rounded-xl">
+
+      <select x-model="fix" @change="applyFilters(true)" class="px-3 py-2 border rounded-xl dark:bg-gray-900 dark:border-gray-700">
         <option value="">Has fix?</option>
         <option value="has">Has fix</option>
         <option value="none">No fix</option>
       </select>
-      <label class="flex items-center gap-2 px-3 py-2 border rounded-xl">
+
+      <label class="flex items-center gap-2 px-3 py-2 border rounded-xl dark:border-gray-700 dark:bg-gray-900">
         <span class="text-sm">CVSS ≥</span>
-        <input type="number" min="0" max="10" step="0.1" x-model.number="cvssMin" @input="applyFilters(true)" class="w-20 outline-none" />
+        <input type="number" min="0" max="10" step="0.1" x-model.number="cvssMin" @input="applyFilters(true)" class="w-20 outline-none bg-transparent" />
       </label>
-      <label class="flex items-center gap-2 px-3 py-2 border rounded-xl">
-        <input type="checkbox" x-model="onlyDirect" @change="applyFilters(true)">
+
+      <label class="flex items-center gap-2 px-3 py-2 border rounded-xl dark:border-gray-700 dark:bg-gray-900">
+        <input type="checkbox" x-model="onlyDirect" @change="applyFilters(true)" class="size-4">
         <span class="text-sm">Only direct</span>
       </label>
+
       <div class="ml-auto flex items-center gap-2 text-sm">
         <label>Sort:</label>
-        <select x-model="sortKey" @change="applyFilters()" class="px-2 py-1 border rounded-lg">
+        <select x-model="sortKey" @change="applyFilters()" class="px-2 py-1 border rounded-lg dark:bg-gray-900 dark:border-gray-700">
           <option value="severityRank">Severity</option>
           <option value="cvss">CVSS</option>
           <option value="component">Component</option>
           <option value="dataset">Dataset</option>
         </select>
-        <button class="px-2 py-1 border rounded-lg" @click="sortDir = sortDir==='desc'?'asc':'desc'; applyFilters()" x-text="sortDir==='desc' ? '↓' : '↑'"></button>
+        <button class="px-2 py-1 border rounded-lg dark:border-gray-700" @click="sortDir = sortDir==='desc'?'asc':'desc'; applyFilters()" x-text="sortDir==='desc' ? '↓' : '↑'"></button>
       </div>
     </div>
   </header>
 
-  <main class="max-w-7xl mx-auto px-4 py-6" x-cloak>
-    <!-- Row 1: Totals (8/12) + Datasets (4/12) -->
-    <section class="grid grid-cols-1 lg:grid-cols-12 gap-4 mb-6" aria-live="polite">
-      <!-- Left: totals + severities (6 equal tiles) -->
+  <!-- Mobile Filters Sheet -->
+  <div class="sm:hidden" x-show="filtersOpen" x-cloak>
+    <div class="fixed inset-0 bg-black/30" @click="filtersOpen=false"></div>
+    <aside class="fixed bottom-0 inset-x-0 bg-white dark:bg-gray-900 border-t dark:border-gray-800 rounded-t-2xl p-4 max-h-[80vh] overflow-auto">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="font-semibold">Filters</h2>
+        <button class="px-3 py-1.5 border rounded-xl" @click="filtersOpen=false">Done</button>
+      </div>
+
+      <div class="space-y-3">
+        <!-- Search with suggestions (mobile full width) -->
+        <div class="relative">
+          <input
+            x-ref="search"
+            x-model="q"
+            @input="onInput"
+            @keydown.down.prevent="moveSel(1)"
+            @keydown.up.prevent="moveSel(-1)"
+            @keydown.enter.prevent="applySel()"
+            @keydown.escape.prevent="hideSuggest()"
+            inputmode="search" autocomplete="off"
+            placeholder="Search…"
+            class="w-full px-3 py-3 border rounded-xl focus:outline-none focus:ring dark:bg-gray-900 dark:border-gray-700"
+          />
+          <div
+            x-show="showSuggest && suggestions.length"
+            @mousedown.prevent
+            class="absolute z-50 mt-1 w-full bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-xl shadow-lg max-h-60 overflow-auto"
+            role="listbox"
+          >
+            <template x-for="(s, i) in suggestions" :key="s.key">
+              <button type="button" @click="pick(s)"
+                :class="['w-full text-left px-3 py-2 flex items-center gap-2',
+                         i===selIdx ? 'bg-blue-50 dark:bg-blue-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-700']">
+                <span class="text-[11px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700" x-text="s.group"></span>
+                <span class="truncate flex-1" x-text="s.label"></span>
+                <span class="text-xs text-gray-400" x-text="s.meta"></span>
+              </button>
+            </template>
+          </div>
+        </div>
+
+        <select x-model="dataset" @change="applyFilters(true)" class="w-full px-3 py-3 border rounded-xl dark:bg-gray-900 dark:border-gray-700">
+          <option value="">All datasets</option>
+          <template x-for="d in datasets" :key="d._key">
+            <option :value="d.id" x-text="`${d.id} (${d.vulnerabilities})`"></option>
+          </template>
+        </select>
+
+        <select x-model="severity" @change="applyFilters(true)" class="w-full px-3 py-3 border rounded-xl dark:bg-gray-900 dark:border-gray-700">
+          <option value="">All severities</option>
+          <template x-for="s in sevOpts" :key="s">
+            <option :value="s" x-text="s"></option>
+          </template>
+        </select>
+
+        <div class="grid grid-cols-2 gap-3">
+          <select x-model="fix" @change="applyFilters(true)" class="px-3 py-3 border rounded-xl dark:bg-gray-900 dark:border-gray-700">
+            <option value="">Has fix?</option>
+            <option value="has">Has fix</option>
+            <option value="none">No fix</option>
+          </select>
+          <label class="flex items-center gap-2 px-3 py-3 border rounded-xl dark:border-gray-700 dark:bg-gray-900">
+            <span class="text-sm">CVSS ≥</span>
+            <input type="number" min="0" max="10" step="0.1" x-model.number="cvssMin" @input="applyFilters(true)" class="w-20 outline-none bg-transparent" />
+          </label>
+        </div>
+
+        <label class="flex items-center gap-3 px-3 py-3 border rounded-xl dark:border-gray-700 dark:bg-gray-900">
+          <input type="checkbox" x-model="onlyDirect" @change="applyFilters(true)" class="size-5">
+          <span>Only direct</span>
+        </label>
+
+        <div class="flex items-center gap-3">
+          <button class="flex-1 px-4 py-3 border rounded-xl" @click="exportCSV()">Export CSV</button>
+          <button class="flex-1 px-4 py-3 border rounded-xl" @click="saveView()">Save</button>
+          <button class="flex-1 px-4 py-3 border rounded-xl" @click="loadView()">Load</button>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <main class="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6" x-cloak>
+    <!-- Row 1 -->
+    <section class="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4 mb-4 sm:mb-6" aria-live="polite">
       <div class="lg:col-span-8 grid grid-cols-2 md:grid-cols-6 gap-3">
         <div class="card col-span-2">
-          <div class="text-xs text-gray-500">Total vulnerabilities</div>
+          <div class="text-xs text-gray-500 dark:text-gray-400">Total vulnerabilities</div>
           <div class="text-2xl font-semibold" x-text="filtered.length"></div>
           <div class="muted mt-1" x-text="filterSummary"></div>
         </div>
         <template x-for="sev in ['CRITICAL','HIGH','MEDIUM','LOW']" :key="'sev-'+sev">
           <div class="card">
-            <div class="text-xs text-gray-500" x-text="sev"></div>
+            <div class="text-xs text-gray-500 dark:text-gray-400" x-text="sev"></div>
             <div class="text-xl font-semibold" x-text="sevCountsFiltered[sev] || 0"></div>
           </div>
         </template>
       </div>
 
-      <!-- Right: Datasets -->
       <div class="card lg:col-span-4">
         <div class="text-sm font-medium mb-3">Datasets in view</div>
         <template x-if="Object.keys(perDatasetSev).length === 0">
@@ -139,10 +233,10 @@
             <div>
               <div class="flex items-center justify-between text-sm">
                 <div class="font-medium truncate" x-text="name"></div>
-                <div class="text-xs text-gray-500" x-text="`${v.total} vulns`"></div>
+                <div class="text-xs text-gray-500 dark:text-gray-400" x-text="`${v.total} vulns`"></div>
               </div>
               <div class="bar"><div class="bar-fill" :style="`width:${Math.min(100, (v.total/Math.max(1, filtered.length))*100)}%`"></div></div>
-              <div class="mt-1 flex flex-wrap gap-2 text-[11px] text-gray-600">
+              <div class="mt-1 flex flex-wrap gap-2 text-[11px] text-gray-600 dark:text-gray-300">
                 <span>CRIT: <b x-text="v.CRITICAL||0"></b></span>
                 <span>HIGH: <b x-text="v.HIGH||0"></b></span>
                 <span>MED: <b x-text="v.MEDIUM||0"></b></span>
@@ -154,11 +248,9 @@
       </div>
     </section>
 
-    <!-- Row 2: Left analytics (8/12) + Right Top CVEs (4/12) -->
-    <section class="grid grid-cols-1 lg:grid-cols-12 gap-4 mb-6">
-      <!-- Left analytics grid -->
-      <div class="lg:col-span-8 grid gap-4 items-stretch [grid-template-columns:repeat(auto-fit,minmax(260px,1fr))]">
-        <!-- Fix availability -->
+    <!-- Row 2 -->
+    <section class="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4 mb-4 sm:mb-6">
+      <div class="lg:col-span-8 grid gap-3 sm:gap-4 items-stretch [grid-template-columns:repeat(auto-fit,minmax(260px,1fr))]">
         <div class="card h-full flex items-start gap-3" x-show="fixRateFiltered > 0">
           <div class="shrink-0">
             <svg viewBox="0 0 44 44" width="64" height="64" aria-label="Fix availability">
@@ -167,23 +259,20 @@
             </svg>
           </div>
           <div>
-            <div class="text-xs text-gray-500">Fix availability</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400">Fix availability</div>
             <div class="text-2xl font-semibold" x-text="fixRateFiltered + '%' "></div>
             <div class="muted mt-1" x-text="fixRateFiltered ? '% of vulnerabilities with known fixes' : 'No known fixes in this view'"></div>
           </div>
         </div>
 
-        <!-- Severity mix -->
         <div class="card h-full md:col-span-1 flex items-start gap-4">
           <div class="shrink-0">
             <svg viewBox="0 0 44 44" width="88" height="88" aria-label="Severity mix">
-              <circle cx="22" cy="22" r="16" fill="none" class="text-gray-200" stroke="currentColor" stroke-width="8"/>
+              <circle cx="22" cy="22" r="16" fill="none" class="text-gray-200 dark:text-gray-700" stroke="currentColor" stroke-width="8"/>
               <circle cx="22" cy="22" r="16" fill="none" :stroke="donutSegs.CRITICAL.color" :stroke-dasharray="donutSegs.CRITICAL.dash" :stroke-dashoffset="donutSegs.CRITICAL.offset" stroke-width="8" style="transform: rotate(-90deg); transform-origin: 50% 50%;" x-show="donutSegs.CRITICAL.count > 0"/>
               <circle cx="22" cy="22" r="16" fill="none" :stroke="donutSegs.HIGH.color" :stroke-dasharray="donutSegs.HIGH.dash" :stroke-dashoffset="donutSegs.HIGH.offset" stroke-width="8" style="transform: rotate(-90deg); transform-origin: 50% 50%;" x-show="donutSegs.HIGH.count > 0"/>
               <circle cx="22" cy="22" r="16" fill="none" :stroke="donutSegs.MEDIUM.color" :stroke-dasharray="donutSegs.MEDIUM.dash" :stroke-dashoffset="donutSegs.MEDIUM.offset" stroke-width="8" style="transform: rotate(-90deg); transform-origin: 50% 50%;" x-show="donutSegs.MEDIUM.count > 0"/>
               <circle cx="22" cy="22" r="16" fill="none" :stroke="donutSegs.LOW.color" :stroke-dasharray="donutSegs.LOW.dash" :stroke-dashoffset="donutSegs.LOW.offset" stroke-width="8" style="transform: rotate(-90deg); transform-origin: 50% 50%;" x-show="donutSegs.LOW.count > 0"/>
-              <circle cx="22" cy="22" r="16" fill="none" :stroke="donutSegs.INFO.color" :stroke-dasharray="donutSegs.INFO.dash" :stroke-dashoffset="donutSegs.INFO.offset" stroke-width="8" style="transform: rotate(-90deg); transform-origin: 50% 50%;" x-show="donutSegs.INFO.count > 0"/>
-              <circle cx="22" cy="22" r="16" fill="none" :stroke="donutSegs.UNKNOWN.color" :stroke-dasharray="donutSegs.UNKNOWN.dash" :stroke-dashoffset="donutSegs.UNKNOWN.offset" stroke-width="8" style="transform: rotate(-90deg); transform-origin: 50% 50%;" x-show="donutSegs.UNKNOWN.count > 0"/>
             </svg>
           </div>
           <div>
@@ -192,7 +281,7 @@
               <template x-for="seg in donutLegend" :key="'leg-'+seg.label">
                 <div class="flex items-center gap-2">
                   <span class="inline-block w-3 h-3 rounded" :style="`background:${seg.color}`"></span>
-                  <span class="text-gray-600" x-text="`${seg.label}: ${seg.count}`"></span>
+                  <span class="text-gray-600 dark:text-gray-300" x-text="`${seg.label}: ${seg.count}`"></span>
                 </div>
               </template>
               <div class="muted mt-2" x-text="filterSummary"></div>
@@ -200,22 +289,20 @@
           </div>
         </div>
 
-        <!-- Top components -->
         <div class="card h-full">
           <div class="text-sm font-medium mb-2">Top components by vulnerabilities</div>
           <div class="space-y-2">
             <template x-for="row in topComponents" :key="'tc-'+row.name">
               <div class="flex items-center gap-3">
-                <div class="w-36 truncate text-xs text-gray-700" :title="row.name" x-text="row.name"></div>
-                <div class="flex-1 h-2 bg-gray-200 rounded"><div class="h-2 rounded" :style="`width:${row.pct}%; background:#10b981`"></div></div>
-                <div class="w-8 text-right text-xs text-gray-500" x-text="row.count"></div>
+                <div class="w-36 truncate text-xs text-gray-700 dark:text-gray-200" :title="row.name" x-text="row.name"></div>
+                <div class="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded"><div class="h-2 rounded" :style="`width:${row.pct}%; background:#10b981`"></div></div>
+                <div class="w-8 text-right text-xs text-gray-500 dark:text-gray-400" x-text="row.count"></div>
               </div>
             </template>
           </div>
         </div>
       </div>
 
-      <!-- Right: Top CVEs -->
       <div class="card lg:col-span-4 h-full">
         <div class="flex items-center justify-between mb-2">
           <div class="text-sm font-medium">Top CVEs</div>
@@ -226,9 +313,9 @@
         </template>
         <ul class="text-sm grid grid-cols-1 gap-3 max-h-80 overflow-auto">
           <template x-for="cve in (metrics.topCVEs || [])" :key="'cve-'+cve.id">
-            <li class="border rounded-xl p-3">
+            <li class="border dark:border-gray-700 rounded-xl p-3">
               <div class="font-medium">
-                <button class="text-blue-600 underline" @click="applyTopCVE(cve.id)" x-text="cve.id"></button>
+                <button class="text-blue-600 dark:text-blue-400 underline" @click="applyTopCVE(cve.id)" x-text="cve.id"></button>
               </div>
               <div class="muted mt-1">
                 <span x-text="`Count: ${cve.count}`"></span>
@@ -241,58 +328,86 @@
       </div>
     </section>
 
-    <!-- Row 3: Remaining analytics -->
-    <section class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-      <!-- CVSS distribution -->
+    <!-- Row 3 -->
+    <section class="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 mb-4 sm:mb-6">
       <div class="card h-full">
         <div class="text-sm font-medium mb-2">CVSS distribution</div>
         <svg :viewBox="`0 0 ${sparkW} ${sparkH}`" :width="sparkW" :height="sparkH" role="img" aria-label="CVSS sparkline">
-          <polyline :points="sparkGrid" fill="none" stroke="#e5e7eb" stroke-width="1"/>
+          <polyline :points="sparkGrid" fill="none" stroke="#e5e7eb" class="dark:stroke-gray-700" stroke-width="1"/>
           <polyline :points="cvssPath" fill="none" stroke="#2563eb" stroke-width="2"/>
         </svg>
         <div class="muted mt-2" x-text="cvssStatsText"></div>
       </div>
 
-      <!-- Top license analytics -->
       <div class="card">
         <div class="text-sm font-medium mb-2">Top licenses by vulnerabilities</div>
         <div class="space-y-2">
           <template x-for="row in topLicenses" :key="'tl-'+row.name">
             <div class="flex items-center gap-3">
-              <div class="w-36 truncate text-xs text-gray-700" :title="row.name" x-text="row.name"></div>
-              <div class="flex-1 h-2 bg-gray-200 rounded"><div class="h-2 rounded" :style="`width:${row.pct}%; background:#6366f1`"></div></div>
-              <div class="w-8 text-right text-xs text-gray-500" x-text="row.count"></div>
+              <div class="w-36 truncate text-xs text-gray-700 dark:text-gray-200" :title="row.name" x-text="row.name"></div>
+              <div class="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded"><div class="h-2 rounded" :style="`width:${row.pct}%; background:#6366f1`"></div></div>
+              <div class="w-8 text-right text-xs text-gray-500 dark:text-gray-400" x-text="row.count"></div>
             </div>
           </template>
           <template x-if="!topLicenses.length"><div class="muted">No license data</div></template>
         </div>
       </div>
 
-      <!-- Fix rate by dataset -->
       <div class="card">
         <div class="text-sm font-medium mb-2">Fix availability by dataset</div>
         <div class="space-y-2">
           <template x-for="row in dsFixRates" :key="'dsfr-'+row.name">
             <div class="flex items-center gap-3">
-              <div class="w-32 truncate text-xs text-gray-700" :title="row.name" x-text="row.name"></div>
-              <div class="flex-1 h-2 bg-gray-200 rounded">
+              <div class="w-32 truncate text-xs text-gray-700 dark:text-gray-200" :title="row.name" x-text="row.name"></div>
+              <div class="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded">
                 <div class="h-2 rounded" :style="`width:${row.rate}%; background:${row.rate>=67?'#10b981':row.rate>=33?'#f59e0b':'#ef4444'}`"></div>
               </div>
-              <div class="w-10 text-right text-xs text-gray-500" x-text="row.rate + '%' "></div>
+              <div class="w-10 text-right text-xs text-gray-500 dark:text-gray-400" x-text="row.rate + '%' "></div>
             </div>
           </template>
         </div>
       </div>
     </section>
 
-    <!-- Vulnerabilities table -->
+    <!-- Data: table on md+, cards on mobile -->
     <section>
-      <div class="mb-2 text-sm text-gray-600">
+      <div class="mb-2 text-sm text-gray-600 dark:text-gray-400">
         <span x-text="`Showing ${filtered.length} of ${items.length} vulnerabilities`"></span>
       </div>
-      <div class="overflow-x-auto bg-white border rounded-2xl shadow-sm">
+
+      <!-- Mobile cards -->
+      <div class="sm:hidden space-y-3">
+        <template x-for="row in paged" :key="'m-'+row._key">
+          <div class="card">
+            <div class="flex items-center justify-between">
+              <span class="px-2 py-0.5 rounded-lg text-xs font-semibold" :class="badge(row.severity)" x-text="row.severity || 'UNKNOWN'"></span>
+              <span class="text-xs">CVSS: <b x-text="row.cvss ?? '-' "></b></span>
+            </div>
+            <div class="mt-2 text-sm font-medium" x-text="row.component || '-' "></div>
+            <div class="muted truncate" x-text="row.purl"></div>
+            <div class="mt-2 flex flex-wrap gap-1">
+              <template x-for="(l,i) in (row.licenses || [])" :key="row._key+'-licm-'+i">
+                <span class="text-xs px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 rounded" x-text="l"></span>
+              </template>
+            </div>
+            <div class="mt-2 text-xs">ID: <span x-text="row.id || '-' "></span></div>
+            <div class="mt-2 flex items-center gap-2">
+              <span class="text-xs px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded" x-text="row.dataset"></span>
+              <template x-if="row.direct"><span class="text-[10px] px-1 py-0.5 bg-emerald-100 text-emerald-700 rounded">direct</span></template>
+            </div>
+            <div class="mt-2">
+              <template x-for="(u,i) in (row.urls || [])" :key="row._key+'-urlm-'+i">
+                <a class="text-blue-600 dark:text-blue-400 underline mr-3" :href="u" target="_blank" rel="noopener" x-text="`ref${i+1}`"></a>
+              </template>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <!-- Desktop table -->
+      <div class="hidden sm:block overflow-x-auto bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-2xl shadow-sm">
         <table class="min-w-full text-sm">
-          <thead class="bg-gray-50">
+          <thead class="bg-gray-50 dark:bg-gray-800/70">
             <tr class="text-left">
               <th class="px-4 py-3">Severity</th>
               <th class="px-4 py-3">CVSS</th>
@@ -306,29 +421,29 @@
           </thead>
           <tbody>
             <template x-for="row in paged" :key="row._key">
-              <tr class="border-t hover:bg-gray-50">
+              <tr class="border-t dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
                 <td class="px-4 py-2">
                   <span class="px-2 py-0.5 rounded-lg text-xs font-semibold" :class="badge(row.severity)" x-text="row.severity || 'UNKNOWN'"></span>
                 </td>
                 <td class="px-4 py-2" x-text="row.cvss ?? '-' "></td>
                 <td class="px-4 py-2">
                   <div class="font-medium" x-text="row.component || '-' "></div>
-                  <div class="text-xs text-gray-500 truncate max-w-[28rem]" x-text="row.purl"></div>
+                  <div class="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[28rem]" x-text="row.purl"></div>
                 </td>
                 <td class="px-4 py-2" x-text="row.version || '-' "></td>
                 <td class="px-4 py-2">
                   <template x-for="(l,i) in (row.licenses || [])" :key="row._key+'-lic-'+i">
-                    <span class="mr-1 px-1.5 py-0.5 bg-gray-100 rounded" x-text="l"></span>
+                    <span class="mr-1 px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 rounded" x-text="l"></span>
                   </template>
                 </td>
                 <td class="px-4 py-2" x-text="row.id || '-' "></td>
                 <td class="px-4 py-2">
-                  <span class="text-xs px-2 py-1 bg-gray-100 rounded" x-text="row.dataset"></span>
+                  <span class="text-xs px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded" x-text="row.dataset"></span>
                   <template x-if="row.direct"><span class="ml-1 text-[10px] px-1 py-0.5 bg-emerald-100 text-emerald-700 rounded">direct</span></template>
                 </td>
                 <td class="px-4 py-2">
                   <template x-for="(u,i) in (row.urls || [])" :key="row._key+'-url-'+i">
-                    <a class="text-blue-600 underline mr-2" :href="u" target="_blank" rel="noopener" x-text="`ref${i+1}`"></a>
+                    <a class="text-blue-600 dark:text-blue-400 underline mr-2" :href="u" target="_blank" rel="noopener" x-text="`ref${i+1}`"></a>
                   </template>
                 </td>
               </tr>
@@ -336,11 +451,13 @@
           </tbody>
         </table>
       </div>
-      <div class="mt-4 flex items-center justify-between">
-        <div class="text-sm text-gray-600">Page <span x-text="page+1"></span> / <span x-text="pages"></span></div>
+
+      <!-- Pagination (sticky on mobile) -->
+      <div class="mt-4 sm:mt-4 flex items-center justify-between sm:static fixed bottom-0 inset-x-0 bg-white/95 dark:bg-gray-900/95 border-t dark:border-gray-800 px-3 py-2 sm:px-0 sm:py-0">
+        <div class="text-sm text-gray-600 dark:text-gray-400">Page <span x-text="page+1"></span> / <span x-text="pages"></span></div>
         <div class="flex gap-2">
-          <button class="px-3 py-1 border rounded-lg" :disabled="page===0" @click="prev()">Prev</button>
-          <button class="px-3 py-1 border rounded-lg" :disabled="page+1>=pages" @click="next()">Next</button>
+          <button class="px-4 py-2 border rounded-lg" :disabled="page===0" @click="prev()">Prev</button>
+          <button class="px-4 py-2 border rounded-lg" :disabled="page+1>=pages" @click="next()">Next</button>
         </div>
       </div>
     </section>
@@ -349,454 +466,212 @@
   <script>
     function app(){
       return {
-        // state from parse-sboms.json
-        items: [],
-        filtered: [],
-        paged: [],
-        datasets: [],
+        /* -------- core state -------- */
+        items: [], filtered: [], paged: [], datasets: [],
         overall: { total: 0, severityCounts: {} },
         metrics: { fixAvailabilityRate:0, topCVEs:[] },
-        // filters
-        dataset: "",
-        q: "",
-        severity: "",
-        fix: "",
-        cvssMin: 0,
-        onlyDirect: false,
-        // severity dropdown (dynamic)
+
+        /* -------- UI state -------- */
+        filtersOpen: false,
+        darkMode: window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches,
+
+        /* -------- filters -------- */
+        dataset: "", q: "", severity: "", fix: "", cvssMin: 0, onlyDirect: false,
+
+        /* dynamic severity dropdown */
         sevBaseOrder: ['CRITICAL','HIGH','MEDIUM','LOW','INFO','UNKNOWN'],
         sevOpts: ['CRITICAL','HIGH','MEDIUM','LOW'],
-        // derived (filtered)
-        sevCountsFiltered: {},
-        fixRateFiltered: 0,
-        filterSummary: "",
-        perDatasetSev: {},
-        // sort/paging
+
+        /* derived */
+        sevCountsFiltered: {}, fixRateFiltered: 0, filterSummary: "", perDatasetSev: {},
+
+        /* sort/paging */
         sortKey: "severityRank",
         sortDir: "desc",
         page: 0,
-        perPage: 50,
+        perPage: (window.innerWidth < 640 ? 15 : 50), // fewer rows on phones
         pages: 0,
         metaText: "",
 
         /* ------- typeahead state ------- */
-        suggestions: [],
-        showSuggest: false,
-        selIdx: -1,
-        _suggestTimer: null,
+        suggestions: [], showSuggest: false, selIdx: -1, _suggestTimer: null,
 
         hideSuggest(){ this.showSuggest=false; this.selIdx=-1; },
-        moveSel(step){
-          if (!this.suggestions.length) return;
-          const n = this.suggestions.length;
-          this.selIdx = ( (this.selIdx + step + n) % n );
-        },
-        applySel(){
-          if (this.selIdx < 0 || this.selIdx >= this.suggestions.length) { this.hideSuggest(); return; }
-          this.pick(this.suggestions[this.selIdx]);
-        },
-        pick(s){
-          this.q = s.query;
-          this.applyFilters(true);
-          this.hideSuggest();
-          this.$nextTick(() => this.$refs.search?.focus());
-        },
-        onInput(e){
-          this.q = e.target.value;
-          this.applyFilters(true);
-          clearTimeout(this._suggestTimer);
-          const val = this.q.trim();
-          if (!val){ this.suggestions=[]; this.hideSuggest(); return; }
-          this._suggestTimer = setTimeout(() => this.updateSuggestions(val), 80);
-        },
+        moveSel(step){ if (!this.suggestions.length) return; const n=this.suggestions.length; this.selIdx=((this.selIdx+step+n)%n); },
+        applySel(){ if (this.selIdx<0 || this.selIdx>=this.suggestions.length) { this.hideSuggest(); return; } this.pick(this.suggestions[this.selIdx]); },
+        pick(s){ this.q = s.query; this.applyFilters(true); this.hideSuggest(); this.$nextTick(()=>this.$refs.search?.focus()); },
+        onInput(e){ this.q=e.target.value; this.applyFilters(true); clearTimeout(this._suggestTimer); const val=this.q.trim(); if(!val){this.suggestions=[]; this.hideSuggest(); return;} this._suggestTimer=setTimeout(()=>this.updateSuggestions(val),80); },
         updateSuggestions(val){
-          const q = val.toLowerCase();
-          const cand = [];
-          const seen = new Set();
-          const push = (group, label, query, meta='') => {
-            const key = group + '|' + label;
-            if (seen.has(key)) return;
-            seen.add(key);
-            cand.push({ key, group, label, query, meta });
-          };
-
-          for (const r of this.items){
-            // Limit to current dataset if selected
-            if (this.dataset && r.dataset !== this.dataset) { /* optional filter */ }
-            if (r.component && r.component.toLowerCase().includes(q))
-              push('component', r.component, r.component, r.version||'');
-            if (r.id && r.id.toLowerCase().includes(q))
-              push('vuln id', r.id, r.id, r.severity||'');
-            if (r.purl && r.purl.toLowerCase().includes(q))
-              push('purl', r.purl, r.purl.split('@')[0] || r.purl, r.version||'');
-            for (const L of (r.licenses||[])){
-              if (L && L.toLowerCase().includes(q)) push('license', L, L, '');
-            }
-            if (r.dataset && r.dataset.toLowerCase().includes(q))
-              push('dataset', r.dataset, r.dataset, '');
+          const q=val.toLowerCase(), cand=[], seen=new Set();
+          const push=(group,label,query,meta='')=>{ const key=group+'|'+label; if(seen.has(key)) return; seen.add(key); cand.push({key,group,label,query,meta}); };
+          for(const r of this.items){
+            if (r.component && r.component.toLowerCase().includes(q)) push('component', r.component, r.component, r.version||'');
+            if (r.id && r.id.toLowerCase().includes(q)) push('vuln id', r.id, r.id, r.severity||'');
+            if (r.purl && r.purl.toLowerCase().includes(q)) push('purl', r.purl, r.purl.split('@')[0]||r.purl, r.version||'');
+            for (const L of (r.licenses||[])){ if (L && L.toLowerCase().includes(q)) push('license', L, L); }
+            if (r.dataset && r.dataset.toLowerCase().includes(q)) push('dataset', r.dataset, r.dataset);
           }
-
-          const starts = [], contains = [];
-          for (const s of cand){
-            (s.label.toLowerCase().startsWith(q) ? starts : contains).push(s);
-          }
-          const byLen = a => a.sort((x,y)=>x.label.length - y.label.length);
-
-          this.suggestions = [...byLen(starts), ...byLen(contains)].slice(0, 12);
-          this.showSuggest = this.suggestions.length > 0;
-          this.selIdx = this.suggestions.length ? 0 : -1;
+          const starts=[], contains=[]; for(const s of cand){ (s.label.toLowerCase().startsWith(q)?starts:contains).push(s); }
+          const byLen=a=>a.sort((x,y)=>x.label.length-y.label.length);
+          this.suggestions=[...byLen(starts),...byLen(contains)].slice(0,12);
+          this.showSuggest=this.suggestions.length>0; this.selIdx=this.suggestions.length?0:-1;
         },
 
-        /* ------- micro-chart helpers ------- */
-        ringCircumference: 2 * Math.PI * 18, // r=18
-        get ringOffsetFix(){
-          const pct = Math.max(0, Math.min(100, this.fixRateFiltered)) / 100;
-          return this.ringCircumference * (1 - pct);
-        },
-        get ringColor(){
-          const p = this.fixRateFiltered;
-          if (p >= 67) return '#10b981';
-          if (p >= 33) return '#f59e0b';
-          return '#ef4444';
-        },
+        /* ------- charts helpers ------- */
+        ringCircumference: 2*Math.PI*18,
+        get ringOffsetFix(){ const pct=Math.max(0,Math.min(100,this.fixRateFiltered))/100; return this.ringCircumference*(1-pct); },
+        get ringColor(){ const p=this.fixRateFiltered; if(p>=67)return '#10b981'; if(p>=33)return '#f59e0b'; return '#ef4444'; },
 
-        donutSegs: {
-          CRITICAL:{dash:'0 1000', offset:0, color:'#dc2626', count:0},
-          HIGH:{dash:'0 1000', offset:0, color:'#f87171', count:0},
-          MEDIUM:{dash:'0 1000', offset:0, color:'#f59e0b', count:0},
-          LOW:{dash:'0 1000', offset:0, color:'#10b981', count:0},
-          INFO:{dash:'0 1000', offset:0, color:'#9ca3af', count:0},
-          UNKNOWN:{dash:'0 1000', offset:0, color:'#d1d5db', count:0},
-        },
-        donutLegend: [],
+        donutSegs:{CRITICAL:{dash:'0 1000',offset:0,color:'#dc2626',count:0},HIGH:{dash:'0 1000',offset:0,color:'#f87171',count:0},MEDIUM:{dash:'0 1000',offset:0,color:'#f59e0b',count:0},LOW:{dash:'0 1000',offset:0,color:'#10b981',count:0},INFO:{dash:'0 1000',offset:0,color:'#9ca3af',count:0},UNKNOWN:{dash:'0 1000',offset:0,color:'#d1d5db',count:0}},
+        donutLegend:[],
         buildSeverityDonut(){
-          const order = this.sevBaseOrder;
-          const counts = this.sevCountsFiltered || {};
-          const total = Object.values(counts).reduce((a,b)=>a+(b||0),0) || 0;
-          const r = 16, C = 2 * Math.PI * r;
-          let acc = 0;
-          this.donutLegend = [];
-          for (const k of order){
-            this.donutSegs[k].dash = `0 ${C.toFixed(2)}`;
-            this.donutSegs[k].offset = 0;
-            this.donutSegs[k].count = 0;
-          }
-          for (const label of order){
-            const count = counts[label] || 0;
-            if (!count) continue;
-            const pct = count / Math.max(1, total);
-            const segLen = pct * C;
-            this.donutSegs[label].dash = `${segLen.toFixed(2)} ${(C - segLen).toFixed(2)}`;
-            this.donutSegs[label].offset = (C * (1 - acc)).toFixed(2);
-            this.donutSegs[label].count = count;
-            acc += pct;
-            this.donutLegend.push({ label, color: this.donutSegs[label].color, count });
-          }
+          const order=this.sevBaseOrder, counts=this.sevCountsFiltered||{}, total=Object.values(counts).reduce((a,b)=>a+(b||0),0)||0;
+          const r=16, C=2*Math.PI*r; let acc=0; this.donutLegend=[];
+          for(const k of order){ this.donutSegs[k].dash=`0 ${C.toFixed(2)}`; this.donutSegs[k].offset=0; this.donutSegs[k].count=0; }
+          for(const label of order){ const count=counts[label]||0; if(!count) continue; const pct=count/Math.max(1,total), segLen=pct*C;
+            this.donutSegs[label].dash=`${segLen.toFixed(2)} ${(C-segLen).toFixed(2)}`; this.donutSegs[label].offset=(C*(1-acc)).toFixed(2); this.donutSegs[label].count=count; acc+=pct;
+            this.donutLegend.push({label, color:this.donutSegs[label].color, count}); }
         },
 
-        // sparkline
-        sparkW: 360,
-        sparkH: 64,
-        cvssPath: "",
-        sparkGrid: "",
-        cvssStatsText: "",
+        sparkW:360, sparkH:64, cvssPath:"", sparkGrid:"", cvssStatsText:"",
         buildCvssSpark(){
-          const w=this.sparkW, h=this.sparkH, pad=6;
-          const xs = this.filtered.map(r=>typeof r.cvss==='number'?r.cvss:null).filter(v=>v!=null);
-          const n=xs.length;
-          this.sparkGrid = `0,${h-1} ${w},${h-1} 0,${Math.round(h/2)} ${w},${Math.round(h/2)} 0,1 ${w},1`;
-          if (!n){ this.cvssPath=""; this.cvssStatsText="no scores"; return; }
-          const sorted=[...xs].sort((a,b)=>a-b);
-          const min=sorted[0];
-          const q = (p)=>sorted[Math.floor((sorted.length-1)*p)];
-          const med=q(0.5).toFixed(1);
-          const step = Math.max(1, Math.floor(n/80));
-          const vals = xs.filter((_,i)=>i%step===0);
-          const m = vals.length;
-          const scaleX=(i)=> pad + (i/(m-1))*(w-2*pad);
-          const scaleY=(v)=> pad + (1-((v-0)/10))*(h-2*pad);
-          this.cvssPath = vals.map((v,i)=>`${scaleX(i)},${scaleY(v)}`).join(' ');
-          this.cvssStatsText = `n=${n} · min=${min?.toFixed(1)} · med=${med} · p90=${q(0.9).toFixed(1)}`;
+          const w=this.sparkW,h=this.sparkH,pad=6,xs=this.filtered.map(r=>typeof r.cvss==='number'?r.cvss:null).filter(v=>v!=null), n=xs.length;
+          this.sparkGrid=`0,${h-1} ${w},${h-1} 0,${Math.round(h/2)} ${w},${Math.round(h/2)} 0,1 ${w},1`;
+          if(!n){ this.cvssPath=""; this.cvssStatsText="no scores"; return; }
+          const sorted=[...xs].sort((a,b)=>a-b), min=sorted[0], q=(p)=>sorted[Math.floor((sorted.length-1)*p)], med=q(0.5).toFixed(1);
+          const step=Math.max(1,Math.floor(n/80)), vals=xs.filter((_,i)=>i%step===0), m=vals.length;
+          const scaleX=(i)=> pad + (i/(m-1))*(w-2*pad), scaleY=(v)=> pad + (1-((v-0)/10))*(h-2*pad);
+          this.cvssPath=vals.map((v,i)=>`${scaleX(i)},${scaleY(v)}`).join(' ');
+          this.cvssStatsText=`n=${n} · min=${min?.toFixed(1)} · med=${med} · p90=${q(0.9).toFixed(1)}`;
         },
 
-        // top components micro bars
-        topComponents: [],
+        topComponents:[],
         buildTopComponents(){
-          const counts = {};
-          for (const r of this.filtered){
-            const name = r.component || 'unknown';
-            counts[name] = (counts[name]||0)+1;
-          }
-          const arr = Object.entries(counts).map(([name,count])=>({name,count}));
-          arr.sort((a,b)=>b.count-a.count);
-          const top = arr.slice(0,6);
-          const max = top[0]?.count || 1;
-          this.topComponents = top.map(x=>({ ...x, pct: Math.round(100*x.count/max) }));
+          const counts={}; for(const r of this.filtered){ const name=r.component||'unknown'; counts[name]=(counts[name]||0)+1; }
+          const arr=Object.entries(counts).map(([name,count])=>({name,count})).sort((a,b)=>b.count-a.count).slice(0,6);
+          const max=arr[0]?.count||1; this.topComponents=arr.map(x=>({...x, pct:Math.round(100*x.count/max)}));
         },
 
-        // top licenses micro bars
-        topLicenses: [],
+        topLicenses:[],
         buildTopLicenses(){
-          const counts = {};
-          for (const r of this.filtered){
-            const ls = Array.isArray(r.licenses) ? r.licenses : [];
-            if (!ls.length) continue;
-            for (const L of ls){
-              const name = (L||'unknown').trim() || 'unknown';
-              counts[name] = (counts[name]||0)+1;
-            }
-          }
-          const arr = Object.entries(counts).map(([name,count])=>({name,count}));
-          arr.sort((a,b)=>b.count-a.count);
-          const top = arr.slice(0,6);
-          const max = top[0]?.count || 1;
-          this.topLicenses = top.map(x=>({ ...x, pct: Math.round(100*x.count/max) }));
+          const counts={}; for(const r of this.filtered){ const ls=Array.isArray(r.licenses)?r.licenses:[]; for(const L of ls){ const name=(L||'unknown').trim()||'unknown'; counts[name]=(counts[name]||0)+1; } }
+          const arr=Object.entries(counts).map(([name,count])=>({name,count})).sort((a,b)=>b.count-a.count).slice(0,6);
+          const max=arr[0]?.count||1; this.topLicenses=arr.map(x=>({...x, pct:Math.round(100*x.count/max)}));
         },
 
-        // fix rate by dataset
-        dsFixRates: [],
+        dsFixRates:[],
         buildDsFixRates(){
-          const map = {};
-          for (const r of this.filtered){
-            const d = r.dataset || 'unknown';
-            if (!map[d]) map[d] = {name:d, total:0, fix:0};
-            map[d].total++;
-            if ((r.fixedVersions||[]).length) map[d].fix++;
-          }
-          const rows = Object.values(map).map(x=>({ name: x.name, rate: x.total ? Math.round(100*x.fix/x.total) : 0 }));
-          rows.sort((a,b)=>b.rate-a.rate);
-          this.dsFixRates = rows.slice(0,6);
+          const map={}; for(const r of this.filtered){ const d=r.dataset||'unknown'; if(!map[d]) map[d]={name:d,total:0,fix:0}; map[d].total++; if((r.fixedVersions||[]).length) map[d].fix++; }
+          const rows=Object.values(map).map(x=>({name:x.name, rate:x.total?Math.round(100*x.fix/x.total):0})).sort((a,b)=>b.rate-a.rate); this.dsFixRates=rows.slice(0,6);
         },
 
-        // replacement card data for 0% fix-rate
-        noFixSevBars: [],
+        noFixSevBars:[],
         buildNoFixBars(){
-          const nf = this.filtered.filter(r => !(r.fixedVersions||[]).length);
-          const counts = this.countSev(nf);
-          const total = nf.length || 1;
-          const order = ['CRITICAL','HIGH','MEDIUM','LOW','INFO','UNKNOWN'];
-          this.noFixSevBars = order
-            .filter(s => counts[s])
-            .map(s => ({ label: s, count: counts[s], pct: Math.round(100 * counts[s] / total), color: this.donutSegs[s].color }));
+          const nf=this.filtered.filter(r=>!(r.fixedVersions||[]).length), counts=this.countSev(nf), total=nf.length||1, order=['CRITICAL','HIGH','MEDIUM','LOW','INFO','UNKNOWN'];
+          this.noFixSevBars=order.filter(s=>counts[s]).map(s=>({label:s,count:counts[s],pct:Math.round(100*counts[s]/total),color:this.donutSegs[s].color}));
         },
 
-        // dropdown options
         updateSeverityOptions(){
-          const q = this.q.trim().toLowerCase();
-          const ds = this.dataset, fix = this.fix, cv = Number(this.cvssMin)||0, only = this.onlyDirect;
-          const base = this.items.filter(r => {
-            if (ds && r.dataset !== ds) return false;
-            if (only && !r.direct) return false;
-            if (cv && (r.cvss ?? -1) < cv) return false;
-            if (fix === 'has' && !(r.fixedVersions||[]).length) return false;
-            if (fix === 'none' && (r.fixedVersions||[]).length) return false;
-            if (q){
-              const t=[r.component,r.purl,r.id,(r.licenses||[]).join(' '),(r.dataset||'')].join(' ').toLowerCase();
-              if (!t.includes(q)) return false;
-            }
-            return true;
-          });
-          const c = this.countSev(base);
-          const out = ['CRITICAL','HIGH','MEDIUM','LOW'];
-          if ((c.INFO||0) > 0) out.push('INFO');
-          if ((c.UNKNOWN||0) > 0) out.push('UNKNOWN');
-          this.sevOpts = out;
+          const q=this.q.trim().toLowerCase(), ds=this.dataset, fix=this.fix, cv=Number(this.cvssMin)||0, only=this.onlyDirect;
+          const base=this.items.filter(r=>{ if(ds && r.dataset!==ds) return false; if(only && !r.direct) return false; if(cv && (r.cvss??-1)<cv) return false;
+            if(fix==='has' && !(r.fixedVersions||[]).length) return false; if(fix==='none' && (r.fixedVersions||[]).length) return false;
+            if(q){ const t=[r.component,r.purl,r.id,(r.licenses||[]).join(' '),(r.dataset||'')].join(' ').toLowerCase(); if(!t.includes(q)) return false; } return true; });
+          const c=this.countSev(base); const out=['CRITICAL','HIGH','MEDIUM','LOW']; if((c.INFO||0)>0) out.push('INFO'); if((c.UNKNOWN||0)>0) out.push('UNKNOWN'); this.sevOpts=out;
         },
 
         async init(){
           const snap = await fetch("./parse-sboms.json?_=" + Date.now()).then(r => r.json());
           this.items = (snap.items || []).map((r, idx) => ({ ...r, _key: (r.dataset || 'ds') + '::' + (r.id || (r.component || 'comp') + '@' + (r.version || '')) + '::' + idx }));
-          this.datasets = (snap.datasets || [])
-            .map((d, i) => ({ ...d, _key: 'ds-' + (d.id || i) }))
-            .sort((a,b)=>String(a.id).localeCompare(String(b.id)));
-          this.overall = snap.overall || this.overall;
-          this.metrics = snap.metrics || this.metrics;
+          this.datasets = (snap.datasets || []).map((d, i) => ({ ...d, _key: 'ds-' + (d.id || i) })).sort((a,b)=>String(a.id).localeCompare(String(b.id)));
+          this.overall = snap.overall || this.overall; this.metrics = snap.metrics || this.metrics;
           this.metaText = snap.generatedAt ? `updated ${new Date(snap.generatedAt).toLocaleString()}` : '';
 
-          this.restoreFromHash();
-          this.updateSeverityOptions();
-          this.applyFilters(true);
+          this.restoreFromHash(); this.updateSeverityOptions(); this.applyFilters(true);
 
-          // click-away to close suggestions
-          document.addEventListener('click', (e)=>{
-            const el = this.$refs.search;
-            if (!el) return;
-            if (!el.contains(e.target)) this.hideSuggest();
-          }, { capture: true });
+          // Close suggestions on outside click
+          document.addEventListener('click', (e)=>{ const el=this.$refs.search; if(!el) return; if(!el.contains(e.target)) this.hideSuggest(); }, { capture:true });
+
+          // Recompute perPage on resize (mobile ↔ desktop)
+          window.addEventListener('resize', ()=>{ const want = window.innerWidth < 640 ? 15 : 50; if (want !== this.perPage){ this.perPage = want; this.paginate(); } });
         },
 
         // utils
         badge(sev){
-          const s = (sev||"").toUpperCase();
-          const base = "px-2 py-0.5 rounded-lg text-xs font-semibold";
+          const s=(sev||"").toUpperCase(); const base="px-2 py-0.5 rounded-lg text-xs font-semibold";
           if (s==="CRITICAL") return base+" bg-red-600 text-white";
-          if (s==="HIGH") return base+" bg-red-200 text-red-800";
-          if (s==="MEDIUM") return base+" bg-amber-100 text-amber-800";
-          if (s==="LOW") return base+" bg-green-100 text-green-800";
-          return base+" bg-gray-100 text-gray-800";
+          if (s==="HIGH") return base+" bg-red-200 text-red-800 dark:bg-red-900/40 dark:text-red-200";
+          if (s==="MEDIUM") return base+" bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200";
+          if (s==="LOW") return base+" bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-200";
+          return base+" bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-100";
         },
 
-        applyFilters(buildGroup=false){
-          const q = this.q.trim().toLowerCase();
-          const sev = this.severity, fix = this.fix, cv = Number(this.cvssMin) || 0, ds = this.dataset;
-          this.filtered = this.items.filter(r => {
-            if (ds && r.dataset !== ds) return false;
-            if (sev && (r.severity||"").toUpperCase() !== sev) return false;
-            if (this.onlyDirect && !r.direct) return false;
-            if (cv && (r.cvss ?? -1) < cv) return false;
-            if (fix === "has" && !(r.fixedVersions || []).length) return false;
-            if (fix === "none" && (r.fixedVersions || []).length) return false;
-            if (q) {
-              const t = [r.component, r.purl, r.id, (r.licenses||[]).join(" "), (r.dataset||"")].join(" ").toLowerCase();
-              if (!t.includes(q)) return false;
-            }
+        applyFilters(){
+          const q=this.q.trim().toLowerCase(), sev=this.severity, fix=this.fix, cv=Number(this.cvssMin)||0, ds=this.dataset;
+          this.filtered=this.items.filter(r=>{
+            if(ds && r.dataset!==ds) return false;
+            if(sev && (r.severity||"").toUpperCase()!==sev) return false;
+            if(this.onlyDirect && !r.direct) return false;
+            if(cv && (r.cvss??-1)<cv) return false;
+            if(fix==="has" && !(r.fixedVersions||[]).length) return false;
+            if(fix==="none" && (r.fixedVersions||[]).length) return false;
+            if(q){ const t=[r.component,r.purl,r.id,(r.licenses||[]).join(" "), (r.dataset||"")].join(" ").toLowerCase(); if(!t.includes(q)) return false; }
             return true;
           });
 
           // sorting
-          const key = this.sortKey;
-          const dir = this.sortDir === "desc" ? -1 : 1;
-          this.filtered.sort((a,b)=>{
-            const A = (a[key] ?? ""), B = (b[key] ?? "");
-            if (typeof A === "number" && typeof B === "number") return (A-B)*dir;
-            return String(A).localeCompare(String(B)) * dir;
-          });
+          const key=this.sortKey, dir=this.sortDir==="desc"?-1:1;
+          this.filtered.sort((a,b)=>{ const A=(a[key]??""), B=(b[key]??""); if(typeof A==="number" && typeof B==="number") return (A-B)*dir; return String(A).localeCompare(String(B))*dir; });
 
-          // paginate
-          this.page = 0;
-          this.paginate();
+          this.page=0; this.paginate();
 
-          // derive view metrics
-          this.sevCountsFiltered = this.countSev(this.filtered);
-          const hasFix = this.filtered.filter(r => (r.fixedVersions||[]).length).length;
-          this.fixRateFiltered = this.filtered.length ? Math.round(100 * (hasFix/this.filtered.length)) : 0;
-          this.perDatasetSev = this.groupByDatasetSev(this.filtered);
-          this.filterSummary = this.buildFilterSummary();
+          // view metrics
+          this.sevCountsFiltered=this.countSev(this.filtered);
+          const hasFix=this.filtered.filter(r=>(r.fixedVersions||[]).length).length;
+          this.fixRateFiltered=this.filtered.length?Math.round(100*(hasFix/this.filtered.length)):0;
+          this.perDatasetSev=this.groupByDatasetSev(this.filtered);
+          this.filterSummary=this.buildFilterSummary();
 
-          // charts / analytics
-          this.buildSeverityDonut();
-          this.buildCvssSpark();
-          this.buildTopComponents();
-          this.buildLicensesIfNeeded();
-          this.buildDsFixRates();
-          this.buildNoFixBars();
+          // charts
+          this.buildSeverityDonut(); this.buildCvssSpark(); this.buildTopComponents(); this.buildLicensesIfNeeded(); this.buildDsFixRates(); this.buildNoFixBars();
 
-          // refresh dropdown options
-          this.updateSeverityOptions();
-          this.persistToHash();
+          // dropdown options
+          this.updateSeverityOptions(); this.persistToHash();
         },
 
-        buildLicensesIfNeeded(){
-          this.buildTopLicenses();
-        },
+        buildLicensesIfNeeded(){ this.buildTopLicenses(); },
 
-        paginate(){
-          this.pages = Math.max(1, Math.ceil(this.filtered.length / this.perPage));
-          const start = this.page * this.perPage;
-          this.paged = this.filtered.slice(start, start + this.perPage);
-        },
-        next(){ if (this.page+1 < this.pages){ this.page++; this.paginate(); this.persistToHash(); } },
-        prev(){ if (this.page>0){ this.page--; this.paginate(); this.persistToHash(); } },
+        paginate(){ this.pages=Math.max(1, Math.ceil(this.filtered.length/this.perPage)); const start=this.page*this.perPage; this.paged=this.filtered.slice(start, start+this.perPage); },
+        next(){ if(this.page+1<this.pages){ this.page++; this.paginate(); this.persistToHash(); } },
+        prev(){ if(this.page>0){ this.page--; this.paginate(); this.persistToHash(); } },
 
-        // helpers
-        countSev(list){
-          const out = {CRITICAL:0,HIGH:0,MEDIUM:0,LOW:0,INFO:0,UNKNOWN:0};
-          for (const r of list){
-            const s=(r.severity||'UNKNOWN').toUpperCase();
-            out[s]=(out[s]||0)+1;
-          }
-          return out;
-        },
-        groupByDatasetSev(list){
-          const map = {};
-          for (const r of list){
-            const ds = r.dataset || 'unknown';
-            if (!map[ds]) map[ds] = {CRITICAL:0,HIGH:0,MEDIUM:0,LOW:0,INFO:0,UNKNOWN:0,total:0};
-            const s=(r.severity||'UNKNOWN').toUpperCase();
-            map[ds][s] = (map[ds][s]||0)+1;
-            map[ds].total++;
-          }
-          return map;
-        },
-        buildFilterSummary(){
-          const bits = [];
-          if (this.dataset) bits.push(`dataset=${this.dataset}`);
-          if (this.severity) bits.push(`severity=${this.severity}`);
-          if (this.fix) bits.push(`fix=${this.fix}`);
-          if (this.cvssMin) bits.push(`cvss≥${this.cvssMin}`);
-          if (this.onlyDirect) bits.push('onlyDirect');
-          if (this.q) bits.push(`q="${this.q}"`);
-          return bits.length ? `Active filters: ${bits.join(' · ')}` : 'No active filters';
-        },
+        countSev(list){ const out={CRITICAL:0,HIGH:0,MEDIUM:0,LOW:0,INFO:0,UNKNOWN:0}; for(const r of list){ const s=(r.severity||'UNKNOWN').toUpperCase(); out[s]=(out[s]||0)+1; } return out; },
+        groupByDatasetSev(list){ const map={}; for(const r of list){ const ds=r.dataset||'unknown'; if(!map[ds]) map[ds]={CRITICAL:0,HIGH:0,MEDIUM:0,LOW:0,INFO:0,UNKNOWN:0,total:0}; const s=(r.severity||'UNKNOWN').toUpperCase(); map[ds][s]=(map[ds][s]||0)+1; map[ds].total++; } return map; },
+        buildFilterSummary(){ const bits=[]; if(this.dataset) bits.push(`dataset=${this.dataset}`); if(this.severity) bits.push(`severity=${this.severity}`); if(this.fix) bits.push(`fix=${this.fix}`); if(this.cvssMin) bits.push(`cvss≥${this.cvssMin}`); if(this.onlyDirect) bits.push('onlyDirect'); if(this.q) bits.push(`q="${this.q}"`); return bits.length?`Active filters: ${bits.join(' · ')}`:'No active filters'; },
 
-        // CSV export
         exportCSV(){
-          const rows = this.filtered;
-          if (!rows.length) { alert("No rows to export."); return; }
-          const header = ["severity","cvss","component","version","purl","licenses","id","dataset","links","direct"];
-          const lines = [header.join(",")];
-          for (const r of rows) {
-            const csv = [
-              r.severity ?? "",
-              r.cvss ?? "",
-              r.component ?? "",
-              r.version ?? "",
-              r.purl ?? "",
-              (r.licenses||[]).join("|"),
-              r.id ?? "",
-              r.dataset ?? "",
-              (r.urls||[]).join("|"),
-              r.direct ? "yes" : "no"
-            ].map(x => `"${String(x).replace(/"/g,'""')}"`).join(",");
+          const rows=this.filtered; if(!rows.length){ alert("No rows to export."); return; }
+          const header=["severity","cvss","component","version","purl","licenses","id","dataset","links","direct"], lines=[header.join(",")];
+          for(const r of rows){
+            const csv=[r.severity??"", r.cvss??"", r.component??"", r.version??"", r.purl??"", (r.licenses||[]).join("|"), r.id??"", r.dataset??"", (r.urls||[]).join("|"), r.direct?"yes":"no"].map(x=>`"${String(x).replace(/"/g,'""')}"`).join(",");
             lines.push(csv);
           }
-          const blob = new Blob([lines.join("\n")], {type: "text/csv;charset=utf-8;"});
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = "sbom-filtered.csv";
-          a.click();
-          URL.revokeObjectURL(url);
+          const blob=new Blob([lines.join("\n")],{type:"text/csv;charset=utf-8;"}), url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download="sbom-filtered.csv"; a.click(); URL.revokeObjectURL(url);
         },
 
-        // URL state
         persistToHash(){
-          const h = new URLSearchParams({
-            q: this.q || "",
-            ds: this.dataset || "",
-            sev: this.severity || "",
-            fix: this.fix || "",
-            cvss: String(this.cvssMin || 0),
-            dir: this.sortDir,
-            key: this.sortKey,
-            dirc: this.onlyDirect ? "1" : "0",
-            p: String(this.page)
-          }).toString();
-          location.hash = h;
+          const h=new URLSearchParams({ q:this.q||"", ds:this.dataset||"", sev:this.severity||"", fix:this.fix||"", cvss:String(this.cvssMin||0), dir:this.sortDir, key:this.sortKey, dirc:this.onlyDirect?"1":"0", p:String(this.page) }).toString();
+          location.hash=h;
         },
         restoreFromHash(){
-          const s = new URLSearchParams(location.hash.replace(/^#/, ""));
-          this.q = s.get("q") || this.q;
-          this.dataset = s.get("ds") || this.dataset;
-          this.severity = s.get("sev") || this.severity;
-          this.fix = s.get("fix") || this.fix;
-          this.cvssMin = Number(s.get("cvss") || this.cvssMin || 0);
-          this.sortDir = s.get("dir") || this.sortDir;
-          this.sortKey = s.get("key") || this.sortKey;
-          this.onlyDirect = s.get("dirc")==="1" ? true : this.onlyDirect;
-          this.page = Number(s.get("p") || this.page || 0);
+          const s=new URLSearchParams(location.hash.replace(/^#/,""));
+          this.q=s.get("q")||this.q; this.dataset=s.get("ds")||this.dataset; this.severity=s.get("sev")||this.severity; this.fix=s.get("fix")||this.fix;
+          this.cvssMin=Number(s.get("cvss")||this.cvssMin||0); this.sortDir=s.get("dir")||this.sortDir; this.sortKey=s.get("key")||this.sortKey; this.onlyDirect=s.get("dirc")==="1"?true:this.onlyDirect; this.page=Number(s.get("p")||this.page||0);
         },
 
-        // Top CVE helper
-        applyTopCVE(id){
-          if (!id) { this.q=""; this.applyFilters(true); return; }
-          this.q = id;
-          this.applyFilters(true);
-        },
+        applyTopCVE(id){ if(!id){ this.q=""; this.applyFilters(true); return; } this.q=id; this.applyFilters(true); },
 
-        // tiny helpers for view save/load
         saveView(){ try{ localStorage.setItem('sbom_view', location.hash); alert('View saved.'); }catch{} },
-        loadView(){ try{ const h = localStorage.getItem('sbom_view'); if(h){ location.hash=h; this.restoreFromHash(); this.applyFilters(true);} }catch{} }
+        loadView(){ try{ const h=localStorage.getItem('sbom_view'); if(h){ location.hash=h; this.restoreFromHash(); this.applyFilters(true);} }catch{} }
       }
     }
   </script>
