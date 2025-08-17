@@ -14,8 +14,13 @@ on:
   workflow_dispatch: {}
 
 permissions:
-  actions: read
-  contents: write   # commit generated files
+  actions: read         # read artifacts in the Nightingale repo
+  contents: read        # read this repo
+  pages: write          # publish to Pages
+  id-token: write       # auth for Pages
+
+concurrency:
+  group: "pages"
 
 jobs:
   sync_build:
@@ -51,7 +56,7 @@ jobs:
           node-version: "20"
 
       - name: Install deps
-        run: npm install --no-audit --no-fund
+        run: npm ci || npm i --no-audit --no-fund
 
       - name: Sync SBOM artifacts from Nightingale
         env:
@@ -60,19 +65,20 @@ jobs:
           NIGHTINGALE_REPO:  ${{ env.NIGHTINGALE_REPO }}
         run: npm run sync:sboms
 
-      - name: Build static UI
-        run: npm run build:ui
+      - name: Build snapshot
+        run: npm run build:snapshot
 
-      - name: Commit changes & push changes to target branch
-        run: |
-          git config --global user.name "sidbhasin13"
-          git config --global user.email "sidbhasin13@outlook.com"
-          git add -A
-          if ! git diff --cached --quiet; then
-            git commit -m "chore: sync SBOMs + rebuild UI (branch: $TARGET_BRANCH)" || { echo "No changes"; exit 0; }
-            # Set upstream if branch was just created
-            git rev-parse --abbrev-ref --symbolic-full-name @{u} >/dev/null 2>&1 || git push --set-upstream origin "$TARGET_BRANCH"
-            git push
-          else
-            echo "No changes to commit."
-          fi
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+  deploy:
+    needs: sync_build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
