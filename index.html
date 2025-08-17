@@ -33,7 +33,44 @@
     </div>
     <!-- Filters -->
     <div class="max-w-7xl mx-auto px-4 pb-3 flex items-center gap-2 flex-wrap">
-      <input x-model="q" @input="applyFilters(true)" placeholder="Search (component, purl, vuln id, license)" class="w-72 px-3 py-2 border rounded-xl focus:outline-none focus:ring" />
+      <!-- Search with typeahead -->
+      <div class="relative w-72">
+        <input
+          x-ref="search"
+          x-model="q"
+          @input="onInput"
+          @keydown.down.prevent="moveSel(1)"
+          @keydown.up.prevent="moveSel(-1)"
+          @keydown.enter.prevent="applySel()"
+          @keydown.escape.prevent="hideSuggest()"
+          placeholder="Search (component, purl, vuln id, license)"
+          class="w-full px-3 py-2 border rounded-xl focus:outline-none focus:ring"
+          aria-autocomplete="list" aria-expanded="true" aria-haspopup="listbox"
+        />
+        <!-- suggestions -->
+        <div
+          x-show="showSuggest && suggestions.length"
+          @mousedown.prevent
+          class="absolute z-50 mt-1 w-full bg-white border rounded-xl shadow-lg max-h-72 overflow-auto"
+          role="listbox"
+        >
+          <template x-for="(s, i) in suggestions" :key="s.key">
+            <button
+              type="button"
+              @click="pick(s)"
+              :class="['w-full text-left px-3 py-2 flex items-center gap-2',
+                       i===selIdx ? 'bg-blue-50' : 'hover:bg-gray-50']"
+              :aria-selected="i===selIdx"
+              role="option"
+            >
+              <span class="text-[11px] px-1.5 py-0.5 rounded bg-gray-100" x-text="s.group"></span>
+              <span class="truncate flex-1" x-text="s.label"></span>
+              <span class="text-xs text-gray-400" x-text="s.meta"></span>
+            </button>
+          </template>
+        </div>
+      </div>
+
       <select x-model="dataset" @change="applyFilters(true)" class="px-3 py-2 border rounded-xl">
         <option value="">All datasets</option>
         <template x-for="d in datasets" :key="d._key">
@@ -136,7 +173,7 @@
           </div>
         </div>
 
-        <!-- Severity mix (kept together with Top components) -->
+        <!-- Severity mix -->
         <div class="card h-full md:col-span-1 flex items-start gap-4">
           <div class="shrink-0">
             <svg viewBox="0 0 44 44" width="88" height="88" aria-label="Severity mix">
@@ -163,7 +200,7 @@
           </div>
         </div>
 
-        <!-- Top components (now next to Severity mix) -->
+        <!-- Top components -->
         <div class="card h-full">
           <div class="text-sm font-medium mb-2">Top components by vulnerabilities</div>
           <div class="space-y-2">
@@ -178,7 +215,7 @@
         </div>
       </div>
 
-      <!-- Right: Top CVEs (now aligned under Datasets column) -->
+      <!-- Right: Top CVEs -->
       <div class="card lg:col-span-4 h-full">
         <div class="flex items-center justify-between mb-2">
           <div class="text-sm font-medium">Top CVEs</div>
@@ -204,9 +241,9 @@
       </div>
     </section>
 
-    <!-- Row 3: Remaining analytics (CVSS moved down here) -->
+    <!-- Row 3: Remaining analytics -->
     <section class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-      <!-- CVSS distribution (shifted below) -->
+      <!-- CVSS distribution -->
       <div class="card h-full">
         <div class="text-sm font-medium mb-2">CVSS distribution</div>
         <svg :viewBox="`0 0 ${sparkW} ${sparkH}`" :width="sparkW" :height="sparkH" role="img" aria-label="CVSS sparkline">
@@ -231,7 +268,7 @@
         </div>
       </div>
 
-      <!-- Fix rate by dataset (micro bars) -->
+      <!-- Fix rate by dataset -->
       <div class="card">
         <div class="text-sm font-medium mb-2">Fix availability by dataset</div>
         <div class="space-y-2">
@@ -342,8 +379,75 @@
         pages: 0,
         metaText: "",
 
+        /* ------- typeahead state ------- */
+        suggestions: [],
+        showSuggest: false,
+        selIdx: -1,
+        _suggestTimer: null,
+
+        hideSuggest(){ this.showSuggest=false; this.selIdx=-1; },
+        moveSel(step){
+          if (!this.suggestions.length) return;
+          const n = this.suggestions.length;
+          this.selIdx = ( (this.selIdx + step + n) % n );
+        },
+        applySel(){
+          if (this.selIdx < 0 || this.selIdx >= this.suggestions.length) { this.hideSuggest(); return; }
+          this.pick(this.suggestions[this.selIdx]);
+        },
+        pick(s){
+          this.q = s.query;
+          this.applyFilters(true);
+          this.hideSuggest();
+          this.$nextTick(() => this.$refs.search?.focus());
+        },
+        onInput(e){
+          this.q = e.target.value;
+          this.applyFilters(true);
+          clearTimeout(this._suggestTimer);
+          const val = this.q.trim();
+          if (!val){ this.suggestions=[]; this.hideSuggest(); return; }
+          this._suggestTimer = setTimeout(() => this.updateSuggestions(val), 80);
+        },
+        updateSuggestions(val){
+          const q = val.toLowerCase();
+          const cand = [];
+          const seen = new Set();
+          const push = (group, label, query, meta='') => {
+            const key = group + '|' + label;
+            if (seen.has(key)) return;
+            seen.add(key);
+            cand.push({ key, group, label, query, meta });
+          };
+
+          for (const r of this.items){
+            // Limit to current dataset if selected
+            if (this.dataset && r.dataset !== this.dataset) { /* optional filter */ }
+            if (r.component && r.component.toLowerCase().includes(q))
+              push('component', r.component, r.component, r.version||'');
+            if (r.id && r.id.toLowerCase().includes(q))
+              push('vuln id', r.id, r.id, r.severity||'');
+            if (r.purl && r.purl.toLowerCase().includes(q))
+              push('purl', r.purl, r.purl.split('@')[0] || r.purl, r.version||'');
+            for (const L of (r.licenses||[])){
+              if (L && L.toLowerCase().includes(q)) push('license', L, L, '');
+            }
+            if (r.dataset && r.dataset.toLowerCase().includes(q))
+              push('dataset', r.dataset, r.dataset, '');
+          }
+
+          const starts = [], contains = [];
+          for (const s of cand){
+            (s.label.toLowerCase().startsWith(q) ? starts : contains).push(s);
+          }
+          const byLen = a => a.sort((x,y)=>x.label.length - y.label.length);
+
+          this.suggestions = [...byLen(starts), ...byLen(contains)].slice(0, 12);
+          this.showSuggest = this.suggestions.length > 0;
+          this.selIdx = this.suggestions.length ? 0 : -1;
+        },
+
         /* ------- micro-chart helpers ------- */
-        // ring gauge
         ringCircumference: 2 * Math.PI * 18, // r=18
         get ringOffsetFix(){
           const pct = Math.max(0, Math.min(100, this.fixRateFiltered)) / 100;
@@ -351,12 +455,11 @@
         },
         get ringColor(){
           const p = this.fixRateFiltered;
-          if (p >= 67) return '#10b981'; // green
-          if (p >= 33) return '#f59e0b'; // amber
-          return '#ef4444'; // red
+          if (p >= 67) return '#10b981';
+          if (p >= 33) return '#f59e0b';
+          return '#ef4444';
         },
 
-        // severity donut
         donutSegs: {
           CRITICAL:{dash:'0 1000', offset:0, color:'#dc2626', count:0},
           HIGH:{dash:'0 1000', offset:0, color:'#f87171', count:0},
@@ -513,6 +616,13 @@
           this.restoreFromHash();
           this.updateSeverityOptions();
           this.applyFilters(true);
+
+          // click-away to close suggestions
+          document.addEventListener('click', (e)=>{
+            const el = this.$refs.search;
+            if (!el) return;
+            if (!el.contains(e.target)) this.hideSuggest();
+          }, { capture: true });
         },
 
         // utils
@@ -577,7 +687,6 @@
         },
 
         buildLicensesIfNeeded(){
-          // compute once per filter
           this.buildTopLicenses();
         },
 
