@@ -46,7 +46,7 @@
         </template>
       </select>
 
-      <!-- Dynamic severities: INFO/UNKNOWN hidden if zero in current filter context -->
+      <!-- Dynamic severities: INFO/UNKNOWN hidden if zero in current view -->
       <select x-model="severity" @change="applyFilters(true)" class="px-3 py-2 border rounded-xl">
         <option value="">All severities</option>
         <template x-for="s in sevOpts" :key="s">
@@ -89,7 +89,7 @@
     <section class="grid grid-cols-1 lg:grid-cols-12 gap-4 mb-6" aria-live="polite">
       <div class="lg:col-span-7 grid grid-cols-2 md:grid-cols-4 gap-3">
         <div class="card col-span-2">
-          <div class="text-xs text-gray-500">Total Vulnerabilities (filtered)</div>
+          <div class="text-xs text-gray-500">Total vulnerabilities</div>
           <div class="text-2xl font-semibold" x-text="filtered.length"></div>
           <div class="muted mt-1" x-text="filterSummary"></div>
         </div>
@@ -97,16 +97,15 @@
           <div class="card">
             <div class="text-xs text-gray-500" x-text="sev"></div>
             <div class="text-xl font-semibold" x-text="sevCountsFiltered[sev] || 0"></div>
-            <div class="text-xs mt-1 text-gray-400">filtered</div>
           </div>
         </template>
       </div>
 
       <!-- Per-dataset compact summary with bar -->
       <div class="card lg:col-span-5">
-        <div class="text-sm font-medium mb-3">Datasets (filtered presence)</div>
+        <div class="text-sm font-medium mb-3">Datasets in view</div>
         <template x-if="Object.keys(perDatasetSev).length === 0">
-          <div class="muted">No datasets in the current filter.</div>
+          <div class="muted">No datasets in the current view.</div>
         </template>
         <div class="space-y-3 max-h-60 overflow-auto">
           <template x-for="(v, name) in perDatasetSev" :key="'ds-'+name">
@@ -132,10 +131,10 @@
 
     <!-- Metrics + Top CVEs -->
     <section class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 md:[grid-auto-rows:1fr] md:items-stretch">
-      <!-- Fix availability ring gauge (neutral at 0%) -->
-      <div class="card h-full flex items-center gap-3" x-show="fixRateFiltered > 0">
+      <!-- Fix availability ring gauge (top-aligned) -->
+      <div class="card h-full flex items-start gap-3" x-show="fixRateFiltered > 0">
         <div class="shrink-0">
-          <svg viewBox="0 0 44 44" width="64" height="64" aria-label="Fix availability ring">
+          <svg viewBox="0 0 44 44" width="64" height="64" aria-label="Fix availability">
             <circle cx="22" cy="22" r="18" fill="none" stroke="#e5e7eb" stroke-width="6"/>
             <circle cx="22" cy="22" r="18" fill="none"
                     :stroke-dasharray="ringCircumference"
@@ -146,16 +145,16 @@
           </svg>
         </div>
         <div>
-          <div class="text-xs text-gray-500">Fix availability rate (filtered)</div>
+          <div class="text-xs text-gray-500">Fix availability</div>
           <div class="text-2xl font-semibold" x-text="fixRateFiltered + '%'"></div>
-          <div class="muted mt-1" x-text="fixRateFiltered ? '% of filtered vulns with known fixes' : 'No known fixes in current filter'"></div>
+          <div class="muted mt-1" x-text="fixRateFiltered ? '% of vulnerabilities with known fixes' : 'No known fixes in this view'"></div>
         </div>
       </div>
 
-      <!-- Replacement when fix rate is 0% -->
+      <!-- Replacement when fix rate is 0% (top-aligned) -->
       <template x-if="fixRateFiltered === 0">
         <div class="card h-full">
-          <div class="text-sm font-medium mb-2">No fixes in current filter</div>
+          <div class="text-sm font-medium mb-2">Fix status by severity</div>
           <div class="space-y-2">
             <template x-for="b in noFixSevBars" :key="'nf-'+b.label">
               <div class="flex items-center gap-3">
@@ -171,12 +170,11 @@
         </div>
       </template>
 
-      <!-- Severity mix donut (colored & aligned) -->
-      <div class="card h-full md:col-span-1 flex items-center gap-4">
+      <!-- Severity mix donut (top-aligned) -->
+      <div class="card h-full md:col-span-1 flex items-start gap-4">
         <div class="shrink-0">
-          <svg viewBox="0 0 44 44" width="88" height="88" aria-label="Severity donut">
+          <svg viewBox="0 0 44 44" width="88" height="88" aria-label="Severity mix">
             <circle cx="22" cy="22" r="16" fill="none" class="text-gray-200" stroke="currentColor" stroke-width="8"/>
-            <!-- fixed per-severity circles to guarantee SVG namespace -->
             <circle cx="22" cy="22" r="16" fill="none"
                     :stroke="donutSegs.CRITICAL.color" :stroke-dasharray="donutSegs.CRITICAL.dash"
                     :stroke-dashoffset="donutSegs.CRITICAL.offset" stroke-width="8"
@@ -204,7 +202,7 @@
           </svg>
         </div>
         <div>
-          <div class="text-sm font-medium mb-2">Severity mix (filtered)</div>
+          <div class="text-sm font-medium mb-2">Severity mix</div>
           <div class="text-xs space-y-1">
             <template x-for="seg in donutLegend" :key="'leg-'+seg.label">
               <div class="flex items-center gap-2">
@@ -247,7 +245,7 @@
     <section class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
       <!-- CVSS sparkline (wider & downsampled) -->
       <div class="card">
-        <div class="text-sm font-medium mb-2">CVSS distribution (filtered)</div>
+        <div class="text-sm font-medium mb-2">CVSS distribution</div>
         <svg :viewBox="`0 0 ${sparkW} ${sparkH}`" :width="sparkW" :height="sparkH" role="img" aria-label="CVSS sparkline">
           <polyline :points="sparkGrid" fill="none" stroke="#e5e7eb" stroke-width="1"/>
           <polyline :points="cvssPath" fill="none" stroke="#2563eb" stroke-width="2"/>
@@ -257,7 +255,7 @@
 
       <!-- Top components (micro bars) -->
       <div class="card">
-        <div class="text-sm font-medium mb-2">Top components (by vulns, filtered)</div>
+        <div class="text-sm font-medium mb-2">Top components by vulnerabilities</div>
         <div class="space-y-2">
           <template x-for="row in topComponents" :key="'tc-'+row.name">
             <div class="flex items-center gap-3">
@@ -273,7 +271,7 @@
 
       <!-- Fix rate by dataset (micro bars) -->
       <div class="card">
-        <div class="text-sm font-medium mb-2">Fix rate by dataset (filtered)</div>
+        <div class="text-sm font-medium mb-2">Fix availability by dataset</div>
         <div class="space-y-2">
           <template x-for="row in dsFixRates" :key="'dsfr-'+row.name">
             <div class="flex items-center gap-3">
@@ -441,7 +439,7 @@
         const scaleX=(i)=> pad + (i/(m-1))*(w-2*pad);
         const scaleY=(v)=> pad + (1-((v-0)/10))*(h-2*pad);
         this.cvssPath = vals.map((v,i)=>`${scaleX(i)},${scaleY(v)}`).join(' ');
-        this.cvssStatsText = `n=${n} · min=${min?.toFixed(1)} · med=${med} · p90=${p90}`;
+        this.cvssStatsText = `n=${n} · min=${min?.toFixed(1)} · med=${med} · p90=${q(0.9).toFixed(1)}`;
       },
 
       // top components micro bars
@@ -493,7 +491,7 @@
           }));
       },
 
-      // dropdown options: hide INFO/UNKNOWN unless present in current filter context (excluding severity)
+      // dropdown options: hide INFO/UNKNOWN unless present in current view (excluding severity filter)
       updateSeverityOptions(){
         const q = this.q.trim().toLowerCase();
         const ds = this.dataset, fix = this.fix, cv = Number(this.cvssMin)||0, only = this.onlyDirect;
@@ -532,7 +530,7 @@
         this.metaText = snap.generatedAt ? `updated ${new Date(snap.generatedAt).toLocaleString()}` : '';
 
         this.restoreFromHash();
-        this.updateSeverityOptions();   // populate dropdown before first render
+        this.updateSeverityOptions();
         this.applyFilters(true);
       },
 
@@ -577,21 +575,21 @@
         // paginate
         this.page = 0; this.paginate();
 
-        // derive filtered metrics
+        // derive view metrics
         this.sevCountsFiltered = this.countSev(this.filtered);
         const hasFix = this.filtered.filter(r => (r.fixedVersions||[]).length).length;
         this.fixRateFiltered = this.filtered.length ? Math.round(100 * (hasFix/this.filtered.length)) : 0;
         this.perDatasetSev = this.groupByDatasetSev(this.filtered);
         this.filterSummary = this.buildFilterSummary();
 
-        // build charts/analytics
+        // charts / analytics
         this.buildSeverityDonut();
         this.buildCvssSpark();
         this.buildTopComponents();
         this.buildDsFixRates();
         this.buildNoFixBars();
 
-        // refresh dropdown options based on current filter context (excluding severity)
+        // refresh dropdown options based on current view (excluding severity)
         this.updateSeverityOptions();
 
         this.persistToHash();
@@ -604,7 +602,7 @@
       next(){ if (this.page+1 < this.pages){ this.page++; this.paginate(); this.persistToHash(); } },
       prev(){ if (this.page>0){ this.page--; this.paginate(); this.persistToHash(); } },
 
-      // helpers for filtered stats
+      // helpers
       countSev(list){
         const out = {CRITICAL:0,HIGH:0,MEDIUM:0,LOW:0,INFO:0,UNKNOWN:0};
         for (const r of list){ const s=(r.severity||'UNKNOWN').toUpperCase(); out[s]=(out[s]||0)+1; }
@@ -629,7 +627,7 @@
         if (this.cvssMin) bits.push(`cvss≥${this.cvssMin}`);
         if (this.onlyDirect) bits.push(`onlyDirect`);
         if (this.q) bits.push(`q="${this.q}"`);
-        return bits.length ? bits.join(' · ') : 'no filters';
+        return bits.length ? `Active filters: ${bits.join(' · ')}` : 'No active filters';
       },
 
       // CSV
