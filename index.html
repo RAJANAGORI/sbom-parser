@@ -5,11 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>SBOM Explorer</title>
   <meta name="color-scheme" content="light" />
-
   <!-- Minimal, fast CDN libs -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
-
   <style>
     .card{ @apply bg-white border rounded-2xl shadow-sm p-4; }
     .chip{ @apply text-xs px-2 py-0.5 rounded; }
@@ -33,19 +31,15 @@
         <button class="px-3 py-2 border rounded-xl" @click="loadView()">Load View</button>
       </div>
     </div>
-
     <!-- Filters -->
     <div class="max-w-7xl mx-auto px-4 pb-3 flex items-center gap-2 flex-wrap">
-      <input x-model="q" @input="applyFilters(true)" placeholder="Search (component, purl, vuln id, license)"
-        class="w-72 px-3 py-2 border rounded-xl focus:outline-none focus:ring" />
-
+      <input x-model="q" @input="applyFilters(true)" placeholder="Search (component, purl, vuln id, license)" class="w-72 px-3 py-2 border rounded-xl focus:outline-none focus:ring" />
       <select x-model="dataset" @change="applyFilters(true)" class="px-3 py-2 border rounded-xl">
         <option value="">All datasets</option>
         <template x-for="d in datasets" :key="d._key">
           <option :value="d.id" x-text="`${d.id} (${d.vulnerabilities})`"></option>
         </template>
       </select>
-
       <!-- Dynamic severities: INFO/UNKNOWN hidden if zero in current view -->
       <select x-model="severity" @change="applyFilters(true)" class="px-3 py-2 border rounded-xl">
         <option value="">All severities</option>
@@ -53,23 +47,19 @@
           <option :value="s" x-text="s"></option>
         </template>
       </select>
-
       <select x-model="fix" @change="applyFilters(true)" class="px-3 py-2 border rounded-xl">
         <option value="">Has fix?</option>
         <option value="has">Has fix</option>
         <option value="none">No fix</option>
       </select>
-
       <label class="flex items-center gap-2 px-3 py-2 border rounded-xl">
         <span class="text-sm">CVSS ≥</span>
         <input type="number" min="0" max="10" step="0.1" x-model.number="cvssMin" @input="applyFilters(true)" class="w-20 outline-none" />
       </label>
-
       <label class="flex items-center gap-2 px-3 py-2 border rounded-xl">
         <input type="checkbox" x-model="onlyDirect" @change="applyFilters(true)">
         <span class="text-sm">Only direct</span>
       </label>
-
       <div class="ml-auto flex items-center gap-2 text-sm">
         <label>Sort:</label>
         <select x-model="sortKey" @change="applyFilters()" class="px-2 py-1 border rounded-lg">
@@ -78,21 +68,16 @@
           <option value="component">Component</option>
           <option value="dataset">Dataset</option>
         </select>
-        <button class="px-2 py-1 border rounded-lg" @click="sortDir = sortDir==='desc'?'asc':'desc'; applyFilters()"
-                x-text="sortDir==='desc' ? '↓' : '↑'"></button>
+        <button class="px-2 py-1 border rounded-lg" @click="sortDir = sortDir==='desc'?'asc':'desc'; applyFilters()" x-text="sortDir==='desc' ? '↓' : '↑'"></button>
       </div>
     </div>
   </header>
 
   <main class="max-w-7xl mx-auto px-4 py-6" x-cloak>
-    <!-- Always-on summaries (no charts) -->
-    <!--
-      CHANGES: use a 2:1 grid so the right column width matches the width of the Top CVEs column below.
-      This aligns the Dataset card with Top CVEs visually.
-    -->
-    <section class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6" aria-live="polite">
-      <!-- left: counts (spans 2) -->
-      <div class="lg:col-span-2 grid grid-cols-2 md:grid-cols-4 gap-3">
+    <!-- Always-on summaries (aligned) -->
+    <section class="grid grid-cols-1 lg:grid-cols-12 gap-4 mb-6" aria-live="polite">
+      <!-- Left: totals + severities (no gaps; 6 equal columns) -->
+      <div class="lg:col-span-8 grid grid-cols-2 md:grid-cols-6 gap-3">
         <div class="card col-span-2">
           <div class="text-xs text-gray-500">Total vulnerabilities</div>
           <div class="text-2xl font-semibold" x-text="filtered.length"></div>
@@ -105,9 +90,8 @@
           </div>
         </template>
       </div>
-
-      <!-- right: per-dataset summary (1 column) -->
-      <div class="card h-full">
+      <!-- Right: Datasets (width aligned to 4/12, same as Top CVEs below) -->
+      <div class="card lg:col-span-4">
         <div class="text-sm font-medium mb-3">Datasets in view</div>
         <template x-if="Object.keys(perDatasetSev).length === 0">
           <div class="muted">No datasets in the current view.</div>
@@ -116,13 +100,11 @@
           <template x-for="(v, name) in perDatasetSev" :key="'ds-'+name">
             <div>
               <div class="flex items-center justify-between text-sm">
-                <div class="font-medium" x-text="name"></div>
+                <div class="font-medium truncate" x-text="name"></div>
                 <div class="text-xs text-gray-500" x-text="`${v.total} vulns`"></div>
               </div>
-              <div class="bar">
-                <div class="bar-fill" :style="`width:${Math.min(100, (v.total/Math.max(1, filtered.length))*100)}%`"></div>
-              </div>
-              <div class="mt-1 flex gap-2 text-[11px] text-gray-600">
+              <div class="bar"><div class="bar-fill" :style="`width:${Math.min(100, (v.total/Math.max(1, filtered.length))*100)}%`"></div></div>
+              <div class="mt-1 flex flex-wrap gap-2 text-[11px] text-gray-600">
                 <span>CRIT: <b x-text="v.CRITICAL||0"></b></span>
                 <span>HIGH: <b x-text="v.HIGH||0"></b></span>
                 <span>MED: <b x-text="v.MEDIUM||0"></b></span>
@@ -134,76 +116,34 @@
       </div>
     </section>
 
-    <!-- Metrics + Top CVEs -->
+    <!-- Metrics + Top CVEs (columns align with section above: 4/4/4) -->
     <section class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 md:[grid-auto-rows:1fr] md:items-stretch">
       <!-- Fix availability ring gauge (top-aligned) -->
       <div class="card h-full flex items-start gap-3" x-show="fixRateFiltered > 0">
         <div class="shrink-0">
           <svg viewBox="0 0 44 44" width="64" height="64" aria-label="Fix availability">
             <circle cx="22" cy="22" r="18" fill="none" stroke="#e5e7eb" stroke-width="6"/>
-            <circle cx="22" cy="22" r="18" fill="none"
-                    :stroke-dasharray="ringCircumference"
-                    :stroke-dashoffset="ringOffsetFix"
-                    :stroke="fixRateFiltered ? ringColor : '#e5e7eb'"
-                    stroke-linecap="round" stroke-width="6"
-                    style="transform: rotate(-90deg); transform-origin: 50% 50%;"/>
+            <circle cx="22" cy="22" r="18" fill="none" :stroke-dasharray="ringCircumference" :stroke-dashoffset="ringOffsetFix" :stroke="fixRateFiltered ? ringColor : '#e5e7eb'" stroke-linecap="round" stroke-width="6" style="transform: rotate(-90deg); transform-origin: 50% 50%;"/>
           </svg>
         </div>
         <div>
           <div class="text-xs text-gray-500">Fix availability</div>
-          <div class="text-2xl font-semibold" x-text="fixRateFiltered + '%' "></div>
+          <div class="text-2xl font-semibold" x-text="fixRateFiltered + '%'"></div>
           <div class="muted mt-1" x-text="fixRateFiltered ? '% of vulnerabilities with known fixes' : 'No known fixes in this view'"></div>
         </div>
       </div>
-
-      <!-- Replacement when fix rate is 0% (top-aligned) -->
-      <template x-if="fixRateFiltered === 0">
-        <div class="card h-full">
-          <div class="text-sm font-medium mb-2">Fix status by severity</div>
-          <div class="space-y-2">
-            <template x-for="b in noFixSevBars" :key="'nf-'+b.label">
-              <div class="flex items-center gap-3">
-                <div class="w-16 text-xs" :style="`color:${b.color}`" x-text="b.label"></div>
-                <div class="flex-1 h-2 bg-gray-200 rounded">
-                  <div class="h-2 rounded" :style="`width:${b.pct}%; background:${b.color}`"></div>
-                </div>
-                <div class="w-10 text-right text-xs text-gray-500" x-text="b.count"></div>
-              </div>
-            </template>
-            <template x-if="!noFixSevBars.length"><div class="muted">No items</div></template>
-          </div>
-        </div>
-      </template>
 
       <!-- Severity mix donut (top-aligned) -->
       <div class="card h-full md:col-span-1 flex items-start gap-4">
         <div class="shrink-0">
           <svg viewBox="0 0 44 44" width="88" height="88" aria-label="Severity mix">
             <circle cx="22" cy="22" r="16" fill="none" class="text-gray-200" stroke="currentColor" stroke-width="8"/>
-            <circle cx="22" cy="22" r="16" fill="none"
-                    :stroke="donutSegs.CRITICAL.color" :stroke-dasharray="donutSegs.CRITICAL.dash"
-                    :stroke-dashoffset="donutSegs.CRITICAL.offset" stroke-width="8"
-                    style="transform: rotate(-90deg); transform-origin: 50% 50%;" x-show="donutSegs.CRITICAL.count > 0"/>
-            <circle cx="22" cy="22" r="16" fill="none"
-                    :stroke="donutSegs.HIGH.color" :stroke-dasharray="donutSegs.HIGH.dash"
-                    :stroke-dashoffset="donutSegs.HIGH.offset" stroke-width="8"
-                    style="transform: rotate(-90deg); transform-origin: 50% 50%;" x-show="donutSegs.HIGH.count > 0"/>
-            <circle cx="22" cy="22" r="16" fill="none"
-                    :stroke="donutSegs.MEDIUM.color" :stroke-dasharray="donutSegs.MEDIUM.dash"
-                    :stroke-dashoffset="donutSegs.MEDIUM.offset" stroke-width="8"
-                    style="transform: rotate(-90deg); transform-origin: 50% 50%;" x-show="donutSegs.MEDIUM.count > 0"/>
-            <circle cx="22" cy="22" r="16" fill="none"
-                    :stroke="donutSegs.LOW.color" :stroke-dasharray="donutSegs.LOW.dash"
-                    :stroke-dashoffset="donutSegs.LOW.offset" stroke-width="8"
-                    style="transform: rotate(-90deg); transform-origin: 50% 50%;" x-show="donutSegs.LOW.count > 0"/>
-            <circle cx="22" cy="22" r="16" fill="none"
-                    :stroke="donutSegs.INFO.color" :stroke-dasharray="donutSegs.INFO.dash"
-                    :stroke-dashoffset="donutSegs.INFO.offset" stroke-width="8"
-                    style="transform: rotate(-90deg); transform-origin: 50% 50%;" x-show="donutSegs.INFO.count > 0"/>
-            <circle cx="22" cy="22" r="16" fill="none"
-                    :stroke="donutSegs.UNKNOWN.color" :stroke-dasharray="donutSegs.UNKNOWN.dash"
-                    :stroke-dashoffset="donutSegs.UNKNOWN.offset" stroke-width="8"
-                    style="transform: rotate(-90deg); transform-origin: 50% 50%;" x-show="donutSegs.UNKNOWN.count > 0"/>
+            <circle cx="22" cy="22" r="16" fill="none" :stroke="donutSegs.CRITICAL.color" :stroke-dasharray="donutSegs.CRITICAL.dash" :stroke-dashoffset="donutSegs.CRITICAL.offset" stroke-width="8" style="transform: rotate(-90deg); transform-origin: 50% 50%;" x-show="donutSegs.CRITICAL.count > 0"/>
+            <circle cx="22" cy="22" r="16" fill="none" :stroke="donutSegs.HIGH.color" :stroke-dasharray="donutSegs.HIGH.dash" :stroke-dashoffset="donutSegs.HIGH.offset" stroke-width="8" style="transform: rotate(-90deg); transform-origin: 50% 50%;" x-show="donutSegs.HIGH.count > 0"/>
+            <circle cx="22" cy="22" r="16" fill="none" :stroke="donutSegs.MEDIUM.color" :stroke-dasharray="donutSegs.MEDIUM.dash" :stroke-dashoffset="donutSegs.MEDIUM.offset" stroke-width="8" style="transform: rotate(-90deg); transform-origin: 50% 50%;" x-show="donutSegs.MEDIUM.count > 0"/>
+            <circle cx="22" cy="22" r="16" fill="none" :stroke="donutSegs.LOW.color" :stroke-dasharray="donutSegs.LOW.dash" :stroke-dashoffset="donutSegs.LOW.offset" stroke-width="8" style="transform: rotate(-90deg); transform-origin: 50% 50%;" x-show="donutSegs.LOW.count > 0"/>
+            <circle cx="22" cy="22" r="16" fill="none" :stroke="donutSegs.INFO.color" :stroke-dasharray="donutSegs.INFO.dash" :stroke-dashoffset="donutSegs.INFO.offset" stroke-width="8" style="transform: rotate(-90deg); transform-origin: 50% 50%;" x-show="donutSegs.INFO.count > 0"/>
+            <circle cx="22" cy="22" r="16" fill="none" :stroke="donutSegs.UNKNOWN.color" :stroke-dasharray="donutSegs.UNKNOWN.dash" :stroke-dashoffset="donutSegs.UNKNOWN.offset" stroke-width="8" style="transform: rotate(-90deg); transform-origin: 50% 50%;" x-show="donutSegs.UNKNOWN.count > 0"/>
           </svg>
         </div>
         <div>
@@ -246,54 +186,7 @@
       </div>
     </section>
 
-    <!-- Quick, lightweight analytics strip (new) -->
-    <section class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-      <div class="card">
-        <div class="text-xs text-gray-500">Direct vs transitive</div>
-        <div class="mt-2 flex items-end gap-3">
-          <div class="flex-1 h-2 bg-gray-200 rounded">
-            <div class="h-2 rounded" :style="`width:${directPct}%; background:#2563eb`"></div>
-          </div>
-          <div class="text-xs text-gray-600" x-text="directPct + '%'"></div>
-        </div>
-        <div class="muted mt-1"><span x-text="countsDirect"></span> direct · <span x-text="countsTransitive"></span> transitive</div>
-      </div>
-
-      <div class="card">
-        <div class="text-xs text-gray-500">Has fix vs no fix</div>
-        <div class="mt-2 flex items-end gap-3">
-          <div class="flex-1 h-2 bg-gray-200 rounded">
-            <div class="h-2 rounded" :style="`width:${fixAvailPct}%; background:#10b981`"></div>
-          </div>
-          <div class="text-xs text-gray-600" x-text="fixAvailPct + '%'"></div>
-        </div>
-        <div class="muted mt-1"><span x-text="countWithFix"></span> with fix · <span x-text="countWithoutFix"></span> no fix</div>
-      </div>
-
-      <div class="card">
-        <div class="text-xs text-gray-500">Top licenses</div>
-        <div class="space-y-2 mt-2">
-          <template x-for="row in topLicenses" :key="'lic-'+row.name">
-            <div class="flex items-center gap-3">
-              <div class="w-24 truncate text-xs text-gray-700" :title="row.name" x-text="row.name"></div>
-              <div class="flex-1 h-2 bg-gray-200 rounded">
-                <div class="h-2 rounded" :style="`width:${row.pct}%; background:#a78bfa`"></div>
-              </div>
-              <div class="w-8 text-right text-xs text-gray-500" x-text="row.count"></div>
-            </div>
-          </template>
-          <template x-if="!topLicenses.length"><div class="muted">No license data</div></template>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="text-xs text-gray-500">Unique components</div>
-        <div class="text-2xl font-semibold" x-text="uniqueComponents"></div>
-        <div class="muted">in current view</div>
-      </div>
-    </section>
-
-    <!-- Lightweight analytics row (existing) -->
+    <!-- Lightweight analytics row -->
     <section class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
       <!-- CVSS sparkline (wider & downsampled) -->
       <div class="card">
@@ -312,17 +205,30 @@
           <template x-for="row in topComponents" :key="'tc-'+row.name">
             <div class="flex items-center gap-3">
               <div class="w-36 truncate text-xs text-gray-700" :title="row.name" x-text="row.name"></div>
-              <div class="flex-1 h-2 bg-gray-200 rounded">
-                <div class="h-2 rounded" :style="`width:${row.pct}%; background:#10b981`"></div>
-              </div>
+              <div class="flex-1 h-2 bg-gray-200 rounded"><div class="h-2 rounded" :style="`width:${row.pct}%; background:#10b981`"></div></div>
               <div class="w-8 text-right text-xs text-gray-500" x-text="row.count"></div>
             </div>
           </template>
         </div>
       </div>
 
-      <!-- Fix rate by dataset (micro bars) -->
+      <!-- NEW: Top license analytics -->
       <div class="card">
+        <div class="text-sm font-medium mb-2">Top licenses by vulnerabilities</div>
+        <div class="space-y-2">
+          <template x-for="row in topLicenses" :key="'tl-'+row.name">
+            <div class="flex items-center gap-3">
+              <div class="w-36 truncate text-xs text-gray-700" :title="row.name" x-text="row.name"></div>
+              <div class="flex-1 h-2 bg-gray-200 rounded"><div class="h-2 rounded" :style="`width:${row.pct}%; background:#6366f1`"></div></div>
+              <div class="w-8 text-right text-xs text-gray-500" x-text="row.count"></div>
+            </div>
+          </template>
+          <template x-if="!topLicenses.length"><div class="muted">No license data</div></template>
+        </div>
+      </div>
+
+      <!-- Fix rate by dataset (micro bars) -->
+      <div class="card md:col-span-3">
         <div class="text-sm font-medium mb-2">Fix availability by dataset</div>
         <div class="space-y-2">
           <template x-for="row in dsFixRates" :key="'dsfr-'+row.name">
@@ -353,9 +259,9 @@
               <th class="px-4 py-3">Version</th>
               <th class="px-4 py-3">License</th>
               <th class="px-4 py-3">Vuln ID</th>
-              <!-- constrain dataset column so it no longer grows wider than needed -->
-              <th class="px-4 py-3 w-40 whitespace-nowrap">Dataset</th>
-              <th class="px-4 py-3">Links</th>
+              <!-- Give Dataset and Links consistent, compact widths for alignment -->
+              <th class="px-4 py-3 w-40">Dataset</th>
+              <th class="px-4 py-3 w-40">Links</th>
             </tr>
           </thead>
           <tbody>
@@ -364,7 +270,7 @@
                 <td class="px-4 py-2">
                   <span class="px-2 py-0.5 rounded-lg text-xs font-semibold" :class="badge(row.severity)" x-text="row.severity || 'UNKNOWN'"></span>
                 </td>
-                <td class="px-4 py-2" x-text="row.cvss ?? '-'"></td>
+                <td class="px-4 py-2" x-text="row.cvss ?? '-' "></td>
                 <td class="px-4 py-2">
                   <div class="font-medium" x-text="row.component || '-' "></div>
                   <div class="text-xs text-gray-500 truncate max-w-[28rem]" x-text="row.purl"></div>
@@ -376,7 +282,7 @@
                   </template>
                 </td>
                 <td class="px-4 py-2" x-text="row.id || '-' "></td>
-                <td class="px-4 py-2 w-40 whitespace-nowrap">
+                <td class="px-4 py-2">
                   <span class="text-xs px-2 py-1 bg-gray-100 rounded" x-text="row.dataset"></span>
                   <template x-if="row.direct"><span class="ml-1 text-[10px] px-1 py-0.5 bg-emerald-100 text-emerald-700 rounded">direct</span></template>
                 </td>
@@ -390,7 +296,6 @@
           </tbody>
         </table>
       </div>
-
       <div class="mt-4 flex items-center justify-between">
         <div class="text-sm text-gray-600">Page <span x-text="page+1"></span> / <span x-text="pages"></span></div>
         <div class="flex gap-2">
@@ -402,369 +307,386 @@
   </main>
 
   <script>
-  function app(){
-    return {
-      // state from parse-sboms.json
-      items: [], filtered: [], paged: [], datasets: [],
-      overall: { total: 0, severityCounts: {} },
-      metrics: { fixAvailabilityRate:0, topCVEs:[] },
+    function app(){
+      return {
+        // state from parse-sboms.json
+        items: [],
+        filtered: [],
+        paged: [],
+        datasets: [],
+        overall: { total: 0, severityCounts: {} },
+        metrics: { fixAvailabilityRate:0, topCVEs:[] },
+        // filters
+        dataset: "",
+        q: "",
+        severity: "",
+        fix: "",
+        cvssMin: 0,
+        onlyDirect: false,
+        // severity dropdown (dynamic)
+        sevBaseOrder: ['CRITICAL','HIGH','MEDIUM','LOW','INFO','UNKNOWN'],
+        sevOpts: ['CRITICAL','HIGH','MEDIUM','LOW'],
+        // derived (filtered)
+        sevCountsFiltered: {},
+        fixRateFiltered: 0,
+        filterSummary: "",
+        perDatasetSev: {},
+        // sort/paging
+        sortKey: "severityRank",
+        sortDir: "desc",
+        page: 0,
+        perPage: 50,
+        pages: 0,
+        metaText: "",
 
-      // filters
-      dataset: "", q: "", severity: "", fix: "", cvssMin: 0, onlyDirect: false,
+        /* ------- micro-chart helpers ------- */
+        // ring gauge
+        ringCircumference: 2 * Math.PI * 18, // r=18
+        get ringOffsetFix(){
+          const pct = Math.max(0, Math.min(100, this.fixRateFiltered)) / 100;
+          return this.ringCircumference * (1 - pct);
+        },
+        get ringColor(){
+          const p = this.fixRateFiltered;
+          if (p >= 67) return '#10b981'; // green
+          if (p >= 33) return '#f59e0b'; // amber
+          return '#ef4444'; // red
+        },
 
-      // severity dropdown (dynamic)
-      sevBaseOrder: ['CRITICAL','HIGH','MEDIUM','LOW','INFO','UNKNOWN'],
-      sevOpts: ['CRITICAL','HIGH','MEDIUM','LOW'],
-
-      // derived (filtered)
-      sevCountsFiltered: {}, fixRateFiltered: 0, filterSummary: "", perDatasetSev: {},
-
-      // sort/paging
-      sortKey: "severityRank", sortDir: "desc", page: 0, perPage: 50, pages: 0,
-
-      metaText: "",
-
-      /* ------- micro-chart helpers ------- */
-      // ring gauge
-      ringCircumference: 2 * Math.PI * 18, // r=18
-      get ringOffsetFix(){
-        const pct = Math.max(0, Math.min(100, this.fixRateFiltered)) / 100;
-        return this.ringCircumference * (1 - pct);
-      },
-      get ringColor(){
-        const p = this.fixRateFiltered;
-        if (p >= 67) return '#10b981'; // green
-        if (p >= 33) return '#f59e0b'; // amber
-        return '#ef4444';              // red
-      },
-
-      // severity donut (fixed circles so colors always render)
-      donutSegs: {
-        CRITICAL:{dash:'0 1000', offset:0, color:'#dc2626', count:0},
-        HIGH:{dash:'0 1000', offset:0, color:'#f87171', count:0},
-        MEDIUM:{dash:'0 1000', offset:0, color:'#f59e0b', count:0},
-        LOW:{dash:'0 1000', offset:0, color:'#10b981', count:0},
-        INFO:{dash:'0 1000', offset:0, color:'#9ca3af', count:0},
-        UNKNOWN:{dash:'0 1000', offset:0, color:'#d1d5db', count:0},
-      },
-      donutLegend: [],
-      buildSeverityDonut(){
-        const order = this.sevBaseOrder;
-        const counts = this.sevCountsFiltered || {};
-        const total = Object.values(counts).reduce((a,b)=>a+(b||0),0) || 0;
-        const r = 16, C = 2 * Math.PI * r;
-        let acc = 0;
-        this.donutLegend = [];
-        for (const k of order){
-          this.donutSegs[k].dash = `0 ${C.toFixed(2)}`;
-          this.donutSegs[k].offset = 0;
-          this.donutSegs[k].count = 0;
-        }
-        for (const label of order){
-          const count = counts[label] || 0;
-          if (!count) continue;
-          const pct = count / Math.max(1, total);
-          const segLen = pct * C;
-          this.donutSegs[label].dash = `${segLen.toFixed(2)} ${(C - segLen).toFixed(2)}`;
-          this.donutSegs[label].offset = (C * (1 - acc)).toFixed(2);
-          this.donutSegs[label].count = count;
-          acc += pct;
-          this.donutLegend.push({ label, color: this.donutSegs[label].color, count });
-        }
-      },
-
-      // sparkline (wider & downsampled)
-      sparkW: 360, sparkH: 64,
-      cvssPath: "", sparkGrid: "", cvssStatsText: "",
-      buildCvssSpark(){
-        const w=this.sparkW, h=this.sparkH, pad=6;
-        const xs = this.filtered.map(r=>typeof r.cvss==='number'?r.cvss:null).filter(v=>v!=null);
-        const n=xs.length;
-        this.sparkGrid = `0,${h-1} ${w},${h-1} 0,${Math.round(h/2)} ${w},${Math.round(h/2)} 0,1 ${w},1`;
-        if (!n){ this.cvssPath=""; this.cvssStatsText="no scores"; return; }
-        const sorted=[...xs].sort((a,b)=>a-b);
-        const min=sorted[0];
-        const q = (p)=>sorted[Math.floor((sorted.length-1)*p)];
-        const med=q(0.5).toFixed(1);
-        const step = Math.max(1, Math.floor(n/80));
-        const vals = xs.filter((_,i)=>i%step===0);
-        const m = vals.length;
-        const scaleX=(i)=> pad + (i/(m-1))*(w-2*pad);
-        const scaleY=(v)=> pad + (1-((v-0)/10))*(h-2*pad);
-        this.cvssPath = vals.map((v,i)=>`${scaleX(i)},${scaleY(v)}`).join(' ');
-        this.cvssStatsText = `n=${n} · min=${min?.toFixed(1)} · med=${med} · p90=${q(0.9).toFixed(1)}`;
-      },
-
-      // top components micro bars
-      topComponents: [],
-      buildTopComponents(){
-        const counts = {};
-        for (const r of this.filtered){
-          const name = r.component || 'unknown';
-          counts[name] = (counts[name]||0)+1;
-        }
-        const arr = Object.entries(counts).map(([name,count])=>({name,count}));
-        arr.sort((a,b)=>b.count-a.count);
-        const top = arr.slice(0,6);
-        const max = top[0]?.count || 1;
-        this.topComponents = top.map(x=>({ ...x, pct: Math.round(100*x.count/max) }));
-      },
-
-      // fix rate by dataset micro bars
-      dsFixRates: [],
-      buildDsFixRates(){
-        const map = {};
-        for (const r of this.filtered){
-          const d = r.dataset || 'unknown';
-          if (!map[d]) map[d] = {name:d, total:0, fix:0};
-          map[d].total++; if ((r.fixedVersions||[]).length) map[d].fix++;
-        }
-        const rows = Object.values(map).map(x=>({
-          name: x.name,
-          rate: x.total ? Math.round(100*x.fix/x.total) : 0
-        }));
-        rows.sort((a,b)=>b.rate-a.rate);
-        this.dsFixRates = rows.slice(0,6);
-      },
-
-      // replacement card data for 0% fix-rate
-      noFixSevBars: [],
-      buildNoFixBars(){
-        const nf = this.filtered.filter(r => !(r.fixedVersions||[]).length);
-        const counts = this.countSev(nf);
-        const total = nf.length || 1;
-        const order = ['CRITICAL','HIGH','MEDIUM','LOW','INFO','UNKNOWN'];
-        this.noFixSevBars = order
-          .filter(s => counts[s])
-          .map(s => ({
-            label: s,
-            count: counts[s],
-            pct: Math.round(100 * counts[s] / total),
-            color: this.donutSegs[s].color
-          }));
-      },
-
-      // NEW quick-strip analytics state
-      countsDirect: 0, countsTransitive: 0, directPct: 0,
-      countWithFix: 0, countWithoutFix: 0, fixAvailPct: 0,
-      topLicenses: [], uniqueComponents: 0,
-      buildQuickStrip(){
-        // direct vs transitive
-        this.countsDirect = this.filtered.filter(r=>!!r.direct).length;
-        this.countsTransitive = Math.max(0, this.filtered.length - this.countsDirect);
-        this.directPct = this.filtered.length ? Math.round(100 * this.countsDirect / this.filtered.length) : 0;
-        // fix vs no-fix (fast counters already computed below too)
-        this.countWithFix = this.filtered.filter(r => (r.fixedVersions||[]).length).length;
-        this.countWithoutFix = Math.max(0, this.filtered.length - this.countWithFix);
-        this.fixAvailPct = this.filtered.length ? Math.round(100 * this.countWithFix / this.filtered.length) : 0;
-        // licenses top 5
-        const map = {};
-        for (const r of this.filtered){
-          for (const l of (r.licenses||['(none)'])){ map[l] = (map[l]||0)+1; }
-        }
-        const arr = Object.entries(map).map(([name,count])=>({name,count})).sort((a,b)=>b.count-a.count).slice(0,5);
-        const max = arr[0]?.count || 1;
-        this.topLicenses = arr.map(x=>({ ...x, pct: Math.round(100*x.count/max) }));
-        // unique components
-        const set = new Set(this.filtered.map(r=>r.component||'unknown'));
-        this.uniqueComponents = set.size;
-      },
-
-      // dropdown options: hide INFO/UNKNOWN unless present in current view (excluding severity filter)
-      updateSeverityOptions(){
-        const q = this.q.trim().toLowerCase();
-        const ds = this.dataset, fix = this.fix, cv = Number(this.cvssMin)||0, only = this.onlyDirect;
-
-        const base = this.items.filter(r => {
-          if (ds && r.dataset !== ds) return false;
-          if (only && !r.direct) return false;
-          if (cv && (r.cvss ?? -1) < cv) return false;
-          if (fix === 'has' && !(r.fixedVersions||[]).length) return false;
-          if (fix === 'none' && (r.fixedVersions||[]).length) return false;
-          if (q){
-            const t=[r.component,r.purl,r.id,(r.licenses||[]).join(' '),(r.dataset||'')].join(' ').toLowerCase();
-            if (!t.includes(q)) return false;
+        // severity donut
+        donutSegs: {
+          CRITICAL:{dash:'0 1000', offset:0, color:'#dc2626', count:0},
+          HIGH:{dash:'0 1000', offset:0, color:'#f87171', count:0},
+          MEDIUM:{dash:'0 1000', offset:0, color:'#f59e0b', count:0},
+          LOW:{dash:'0 1000', offset:0, color:'#10b981', count:0},
+          INFO:{dash:'0 1000', offset:0, color:'#9ca3af', count:0},
+          UNKNOWN:{dash:'0 1000', offset:0, color:'#d1d5db', count:0},
+        },
+        donutLegend: [],
+        buildSeverityDonut(){
+          const order = this.sevBaseOrder;
+          const counts = this.sevCountsFiltered || {};
+          const total = Object.values(counts).reduce((a,b)=>a+(b||0),0) || 0;
+          const r = 16, C = 2 * Math.PI * r;
+          let acc = 0;
+          this.donutLegend = [];
+          for (const k of order){
+            this.donutSegs[k].dash = `0 ${C.toFixed(2)}`;
+            this.donutSegs[k].offset = 0;
+            this.donutSegs[k].count = 0;
           }
-          return true;
-        });
-        const c = this.countSev(base);
-        const out = ['CRITICAL','HIGH','MEDIUM','LOW'];
-        if ((c.INFO||0) > 0) out.push('INFO');
-        if ((c.UNKNOWN||0) > 0) out.push('UNKNOWN');
-        this.sevOpts = out;
-      },
-
-      async init(){
-        const snap = await fetch("./parse-sboms.json?_=" + Date.now()).then(r => r.json());
-        this.items = (snap.items || []).map((r, idx) => ({
-          ...r,
-          _key: (r.dataset || 'ds') + '::' + (r.id || (r.component || 'comp') + '@' + (r.version || '')) + '::' + idx
-        }));
-        this.datasets = (snap.datasets || [])
-          .map((d, i) => ({ ...d, _key: 'ds-' + (d.id || i) }))
-          .sort((a,b)=>String(a.id).localeCompare(String(b.id)));
-
-        this.overall = snap.overall || this.overall;
-        this.metrics = snap.metrics || this.metrics;
-        this.metaText = snap.generatedAt ? `updated ${new Date(snap.generatedAt).toLocaleString()}` : '';
-
-        this.restoreFromHash();
-        this.updateSeverityOptions();
-        this.applyFilters(true);
-      },
-
-      // utils
-      badge(sev){
-        const s = (sev||"").toUpperCase();
-        const base = "px-2 py-0.5 rounded-lg text-xs font-semibold";
-        if (s==="CRITICAL") return base+" bg-red-600 text-white";
-        if (s==="HIGH") return base+" bg-red-200 text-red-800";
-        if (s==="MEDIUM") return base+" bg-amber-100 text-amber-800";
-        if (s==="LOW") return base+" bg-green-100 text-green-800";
-        return base+" bg-gray-100 text-gray-800";
-      },
-
-      applyFilters(buildGroup=false){
-        const q = this.q.trim().toLowerCase();
-        const sev = this.severity, fix = this.fix, cv = Number(this.cvssMin) || 0, ds = this.dataset;
-
-        this.filtered = this.items.filter(r => {
-          if (ds && r.dataset !== ds) return false;
-          if (sev && (r.severity||"").toUpperCase() !== sev) return false;
-          if (this.onlyDirect && !r.direct) return false;
-          if (cv && (r.cvss ?? -1) < cv) return false;
-          if (fix === "has" && !(r.fixedVersions || []).length) return false;
-          if (fix === "none" && (r.fixedVersions || []).length) return false;
-          if (q) {
-            const t = [r.component, r.purl, r.id, (r.licenses||[]).join(" "), (r.dataset||"")].join(" ").toLowerCase();
-            if (!t.includes(q)) return false;
+          for (const label of order){
+            const count = counts[label] || 0;
+            if (!count) continue;
+            const pct = count / Math.max(1, total);
+            const segLen = pct * C;
+            this.donutSegs[label].dash = `${segLen.toFixed(2)} ${(C - segLen).toFixed(2)}`;
+            this.donutSegs[label].offset = (C * (1 - acc)).toFixed(2);
+            this.donutSegs[label].count = count;
+            acc += pct;
+            this.donutLegend.push({ label, color: this.donutSegs[label].color, count });
           }
-          return true;
-        });
+        },
 
-        // sorting
-        const key = this.sortKey;
-        const dir = this.sortDir === "desc" ? -1 : 1;
-        this.filtered.sort((a,b)=>{
-          const A = (a[key] ?? ""), B = (b[key] ?? "");
-          if (typeof A === "number" && typeof B === "number") return (A-B)*dir;
-          return String(A).localeCompare(String(B)) * dir;
-        });
+        // sparkline (wider & downsampled)
+        sparkW: 360,
+        sparkH: 64,
+        cvssPath: "",
+        sparkGrid: "",
+        cvssStatsText: "",
+        buildCvssSpark(){
+          const w=this.sparkW, h=this.sparkH, pad=6;
+          const xs = this.filtered.map(r=>typeof r.cvss==='number'?r.cvss:null).filter(v=>v!=null);
+          const n=xs.length;
+          this.sparkGrid = `0,${h-1} ${w},${h-1} 0,${Math.round(h/2)} ${w},${Math.round(h/2)} 0,1 ${w},1`;
+          if (!n){ this.cvssPath=""; this.cvssStatsText="no scores"; return; }
+          const sorted=[...xs].sort((a,b)=>a-b);
+          const min=sorted[0];
+          const q = (p)=>sorted[Math.floor((sorted.length-1)*p)];
+          const med=q(0.5).toFixed(1);
+          const step = Math.max(1, Math.floor(n/80));
+          const vals = xs.filter((_,i)=>i%step===0);
+          const m = vals.length;
+          const scaleX=(i)=> pad + (i/(m-1))*(w-2*pad);
+          const scaleY=(v)=> pad + (1-((v-0)/10))*(h-2*pad);
+          this.cvssPath = vals.map((v,i)=>`${scaleX(i)},${scaleY(v)}`).join(' ');
+          this.cvssStatsText = `n=${n} · min=${min?.toFixed(1)} · med=${med} · p90=${q(0.9).toFixed(1)}`;
+        },
 
-        // paginate
-        this.page = 0; this.paginate();
+        // top components micro bars
+        topComponents: [],
+        buildTopComponents(){
+          const counts = {};
+          for (const r of this.filtered){
+            const name = r.component || 'unknown';
+            counts[name] = (counts[name]||0)+1;
+          }
+          const arr = Object.entries(counts).map(([name,count])=>({name,count}));
+          arr.sort((a,b)=>b.count-a.count);
+          const top = arr.slice(0,6);
+          const max = top[0]?.count || 1;
+          this.topComponents = top.map(x=>({ ...x, pct: Math.round(100*x.count/max) }));
+        },
 
-        // derive view metrics
-        this.sevCountsFiltered = this.countSev(this.filtered);
-        const hasFix = this.filtered.filter(r => (r.fixedVersions||[]).length).length;
-        this.fixRateFiltered = this.filtered.length ? Math.round(100 * (hasFix/this.filtered.length)) : 0;
-        this.perDatasetSev = this.groupByDatasetSev(this.filtered);
-        this.filterSummary = this.buildFilterSummary();
+        // NEW: top licenses micro bars
+        topLicenses: [],
+        buildTopLicenses(){
+          const counts = {};
+          for (const r of this.filtered){
+            const ls = Array.isArray(r.licenses) ? r.licenses : [];
+            if (!ls.length) continue;
+            for (const L of ls){
+              const name = (L||'unknown').trim() || 'unknown';
+              counts[name] = (counts[name]||0)+1;
+            }
+          }
+          const arr = Object.entries(counts).map(([name,count])=>({name,count}));
+          arr.sort((a,b)=>b.count-a.count);
+          const top = arr.slice(0,6);
+          const max = top[0]?.count || 1;
+          this.topLicenses = top.map(x=>({ ...x, pct: Math.round(100*x.count/max) }));
+        },
 
-        // charts / analytics
-        this.buildSeverityDonut();
-        this.buildCvssSpark();
-        this.buildTopComponents();
-        this.buildDsFixRates();
-        this.buildNoFixBars();
-        this.buildQuickStrip();
+        // fix rate by dataset micro bars
+        dsFixRates: [],
+        buildDsFixRates(){
+          const map = {};
+          for (const r of this.filtered){
+            const d = r.dataset || 'unknown';
+            if (!map[d]) map[d] = {name:d, total:0, fix:0};
+            map[d].total++;
+            if ((r.fixedVersions||[]).length) map[d].fix++;
+          }
+          const rows = Object.values(map).map(x=>({ name: x.name, rate: x.total ? Math.round(100*x.fix/x.total) : 0 }));
+          rows.sort((a,b)=>b.rate-a.rate);
+          this.dsFixRates = rows.slice(0,6);
+        },
 
-        // refresh dropdown options based on current view (excluding severity)
-        this.updateSeverityOptions();
+        // replacement card data for 0% fix-rate
+        noFixSevBars: [],
+        buildNoFixBars(){
+          const nf = this.filtered.filter(r => !(r.fixedVersions||[]).length);
+          const counts = this.countSev(nf);
+          const total = nf.length || 1;
+          const order = ['CRITICAL','HIGH','MEDIUM','LOW','INFO','UNKNOWN'];
+          this.noFixSevBars = order
+            .filter(s => counts[s])
+            .map(s => ({ label: s, count: counts[s], pct: Math.round(100 * counts[s] / total), color: this.donutSegs[s].color }));
+        },
 
-        this.persistToHash();
-      },
-      paginate(){
-        this.pages = Math.max(1, Math.ceil(this.filtered.length / this.perPage));
-        const start = this.page * this.perPage;
-        this.paged = this.filtered.slice(start, start + this.perPage);
-      },
-      next(){ if (this.page+1 < this.pages){ this.page++; this.paginate(); this.persistToHash(); } },
-      prev(){ if (this.page>0){ this.page--; this.paginate(); this.persistToHash(); } },
+        // dropdown options
+        updateSeverityOptions(){
+          const q = this.q.trim().toLowerCase();
+          const ds = this.dataset, fix = this.fix, cv = Number(this.cvssMin)||0, only = this.onlyDirect;
+          const base = this.items.filter(r => {
+            if (ds && r.dataset !== ds) return false;
+            if (only && !r.direct) return false;
+            if (cv && (r.cvss ?? -1) < cv) return false;
+            if (fix === 'has' && !(r.fixedVersions||[]).length) return false;
+            if (fix === 'none' && (r.fixedVersions||[]).length) return false;
+            if (q){
+              const t=[r.component,r.purl,r.id,(r.licenses||[]).join(' '),(r.dataset||'')].join(' ').toLowerCase();
+              if (!t.includes(q)) return false;
+            }
+            return true;
+          });
+          const c = this.countSev(base);
+          const out = ['CRITICAL','HIGH','MEDIUM','LOW'];
+          if ((c.INFO||0) > 0) out.push('INFO');
+          if ((c.UNKNOWN||0) > 0) out.push('UNKNOWN');
+          this.sevOpts = out;
+        },
 
-      // helpers
-      countSev(list){
-        const out = {CRITICAL:0,HIGH:0,MEDIUM:0,LOW:0,INFO:0,UNKNOWN:0};
-        for (const r of list){ const s=(r.severity||'UNKNOWN').toUpperCase(); out[s]=(out[s]||0)+1; }
-        return out;
-      },
-      groupByDatasetSev(list){
-        const map = {};
-        for (const r of list){
-          const ds = r.dataset || 'unknown';
-          if (!map[ds]) map[ds] = {CRITICAL:0,HIGH:0,MEDIUM:0,LOW:0,INFO:0,UNKNOWN:0,total:0};
-          const s=(r.severity||'UNKNOWN').toUpperCase();
-          map[ds][s] = (map[ds][s]||0)+1;
-          map[ds].total++;
-        }
-        return map;
-      },
-      buildFilterSummary(){
-        const bits = [];
-        if (this.dataset) bits.push(`dataset=${this.dataset}`);
-        if (this.severity) bits.push(`severity=${this.severity}`);
-        if (this.fix) bits.push(`fix=${this.fix}`);
-        if (this.cvssMin) bits.push(`cvss≥${this.cvssMin}`);
-        if (this.onlyDirect) bits.push(`onlyDirect`);
-        if (this.q) bits.push(`q="${this.q}"`);
-        return bits.length ? `Active filters: ${bits.join(' · ')}` : 'No active filters';
-      },
+        async init(){
+          const snap = await fetch("./parse-sboms.json?_=" + Date.now()).then(r => r.json());
+          this.items = (snap.items || []).map((r, idx) => ({ ...r, _key: (r.dataset || 'ds') + '::' + (r.id || (r.component || 'comp') + '@' + (r.version || '')) + '::' + idx }));
+          this.datasets = (snap.datasets || [])
+            .map((d, i) => ({ ...d, _key: 'ds-' + (d.id || i) }))
+            .sort((a,b)=>String(a.id).localeCompare(String(b.id)));
+          this.overall = snap.overall || this.overall;
+          this.metrics = snap.metrics || this.metrics;
+          this.metaText = snap.generatedAt ? `updated ${new Date(snap.generatedAt).toLocaleString()}` : '';
 
-      // CSV
-      exportCSV(){
-        const rows = this.filtered;
-        if (!rows.length) { alert("No rows to export."); return; }
-        const header = ["severity","cvss","component","version","purl","licenses","id","dataset","links","direct"];
-        const lines = [header.join(",")];
-        for (const r of rows) {
-          const csv = [
-            r.severity ?? "", r.cvss ?? "", r.component ?? "", r.version ?? "", r.purl ?? "",
-            (r.licenses||[]).join("|"), r.id ?? "", r.dataset ?? "", (r.urls||[]).join("|"),
-            r.direct ? "yes" : "no"
-          ].map(x => `"${String(x).replace(/"/g,'""')}"`).join(",");
-          lines.push(csv);
-        }
-        const blob = new Blob([lines.join("\n")], {type: "text/csv;charset=utf-8;"});
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a"); a.href = url; a.download = "sbom-filtered.csv"; a.click();
-        URL.revokeObjectURL(url);
-      },
+          this.restoreFromHash();
+          this.updateSeverityOptions();
+          this.applyFilters(true);
+        },
 
-      // URL state
-      persistToHash(){
-        const h = new URLSearchParams({
-          q: this.q || "", ds: this.dataset || "", sev: this.severity || "",
-          fix: this.fix || "", cvss: String(this.cvssMin || 0),
-          dir: this.sortDir, key: this.sortKey, dirc: this.onlyDirect ? "1" : "0",
-          p: String(this.page)
-        }).toString();
-        location.hash = h;
-      },
-      restoreFromHash(){
-        const s = new URLSearchParams(location.hash.replace(/^#/, ""));
-        this.q = s.get("q") || this.q;
-        this.dataset = s.get("ds") || this.dataset;
-        this.severity = s.get("sev") || this.severity;
-        this.fix = s.get("fix") || this.fix;
-        this.cvssMin = Number(s.get("cvss") || this.cvssMin || 0);
-        this.sortDir = s.get("dir") || this.sortDir;
-        this.sortKey = s.get("key") || this.sortKey;
-        this.onlyDirect = s.get("dirc")==="1" ? true : this.onlyDirect;
-        this.page = Number(s.get("p") || this.page || 0);
-      },
+        // utils
+        badge(sev){
+          const s = (sev||"").toUpperCase();
+          const base = "px-2 py-0.5 rounded-lg text-xs font-semibold";
+          if (s==="CRITICAL") return base+" bg-red-600 text-white";
+          if (s==="HIGH") return base+" bg-red-200 text-red-800";
+          if (s==="MEDIUM") return base+" bg-amber-100 text-amber-800";
+          if (s==="LOW") return base+" bg-green-100 text-green-800";
+          return base+" bg-gray-100 text-gray-800";
+        },
 
-      // Top CVE helper
-      applyTopCVE(id){
-        if (!id) { this.q=""; this.applyFilters(true); return; }
-        this.q = id;
-        this.applyFilters(true);
-      },
+        applyFilters(buildGroup=false){
+          const q = this.q.trim().toLowerCase();
+          const sev = this.severity, fix = this.fix, cv = Number(this.cvssMin) || 0, ds = this.dataset;
+          this.filtered = this.items.filter(r => {
+            if (ds && r.dataset !== ds) return false;
+            if (sev && (r.severity||"").toUpperCase() !== sev) return false;
+            if (this.onlyDirect && !r.direct) return false;
+            if (cv && (r.cvss ?? -1) < cv) return false;
+            if (fix === "has" && !(r.fixedVersions || []).length) return false;
+            if (fix === "none" && (r.fixedVersions || []).length) return false;
+            if (q) {
+              const t = [r.component, r.purl, r.id, (r.licenses||[]).join(" "), (r.dataset||"")].join(" ").toLowerCase();
+              if (!t.includes(q)) return false;
+            }
+            return true;
+          });
 
-      // tiny helpers for view save/load
-      saveView(){ try{ localStorage.setItem('sbom_view', location.hash); alert('View saved.'); }catch{} },
-      loadView(){ try{ const h = localStorage.getItem('sbom_view'); if(h){ location.hash=h; this.restoreFromHash(); this.applyFilters(true);} }catch{} }
+          // sorting
+          const key = this.sortKey;
+          const dir = this.sortDir === "desc" ? -1 : 1;
+          this.filtered.sort((a,b)=>{
+            const A = (a[key] ?? ""), B = (b[key] ?? "");
+            if (typeof A === "number" && typeof B === "number") return (A-B)*dir;
+            return String(A).localeCompare(String(B)) * dir;
+          });
+
+          // paginate
+          this.page = 0;
+          this.paginate();
+
+          // derive view metrics
+          this.sevCountsFiltered = this.countSev(this.filtered);
+          const hasFix = this.filtered.filter(r => (r.fixedVersions||[]).length).length;
+          this.fixRateFiltered = this.filtered.length ? Math.round(100 * (hasFix/this.filtered.length)) : 0;
+          this.perDatasetSev = this.groupByDatasetSev(this.filtered);
+          this.filterSummary = this.buildFilterSummary();
+
+          // charts / analytics
+          this.buildSeverityDonut();
+          this.buildCvssSpark();
+          this.buildTopComponents();
+          this.buildLicensesIfNeeded();
+          this.buildDsFixRates();
+          this.buildNoFixBars();
+
+          // refresh dropdown options
+          this.updateSeverityOptions();
+          this.persistToHash();
+        },
+
+        buildLicensesIfNeeded(){
+          // compute once per filter
+          this.buildTopLicenses();
+        },
+
+        paginate(){
+          this.pages = Math.max(1, Math.ceil(this.filtered.length / this.perPage));
+          const start = this.page * this.perPage;
+          this.paged = this.filtered.slice(start, start + this.perPage);
+        },
+        next(){ if (this.page+1 < this.pages){ this.page++; this.paginate(); this.persistToHash(); } },
+        prev(){ if (this.page>0){ this.page--; this.paginate(); this.persistToHash(); } },
+
+        // helpers
+        countSev(list){
+          const out = {CRITICAL:0,HIGH:0,MEDIUM:0,LOW:0,INFO:0,UNKNOWN:0};
+          for (const r of list){
+            const s=(r.severity||'UNKNOWN').toUpperCase();
+            out[s]=(out[s]||0)+1;
+          }
+          return out;
+        },
+        groupByDatasetSev(list){
+          const map = {};
+          for (const r of list){
+            const ds = r.dataset || 'unknown';
+            if (!map[ds]) map[ds] = {CRITICAL:0,HIGH:0,MEDIUM:0,LOW:0,INFO:0,UNKNOWN:0,total:0};
+            const s=(r.severity||'UNKNOWN').toUpperCase();
+            map[ds][s] = (map[ds][s]||0)+1;
+            map[ds].total++;
+          }
+          return map;
+        },
+        buildFilterSummary(){
+          const bits = [];
+          if (this.dataset) bits.push(`dataset=${this.dataset}`);
+          if (this.severity) bits.push(`severity=${this.severity}`);
+          if (this.fix) bits.push(`fix=${this.fix}`);
+          if (this.cvssMin) bits.push(`cvss≥${this.cvssMin}`);
+          if (this.onlyDirect) bits.push('onlyDirect');
+          if (this.q) bits.push(`q="${this.q}"`);
+          return bits.length ? `Active filters: ${bits.join(' · ')}` : 'No active filters';
+        },
+
+        // CSV export
+        exportCSV(){
+          const rows = this.filtered;
+          if (!rows.length) { alert("No rows to export."); return; }
+          const header = ["severity","cvss","component","version","purl","licenses","id","dataset","links","direct"];
+          const lines = [header.join(",")];
+          for (const r of rows) {
+            const csv = [
+              r.severity ?? "",
+              r.cvss ?? "",
+              r.component ?? "",
+              r.version ?? "",
+              r.purl ?? "",
+              (r.licenses||[]).join("|"),
+              r.id ?? "",
+              r.dataset ?? "",
+              (r.urls||[]).join("|"),
+              r.direct ? "yes" : "no"
+            ].map(x => `"${String(x).replace(/"/g,'""')}"`).join(",");
+            lines.push(csv);
+          }
+          const blob = new Blob([lines.join("\n")], {type: "text/csv;charset=utf-8;"});
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "sbom-filtered.csv";
+          a.click();
+          URL.revokeObjectURL(url);
+        },
+
+        // URL state
+        persistToHash(){
+          const h = new URLSearchParams({
+            q: this.q || "",
+            ds: this.dataset || "",
+            sev: this.severity || "",
+            fix: this.fix || "",
+            cvss: String(this.cvssMin || 0),
+            dir: this.sortDir,
+            key: this.sortKey,
+            dirc: this.onlyDirect ? "1" : "0",
+            p: String(this.page)
+          }).toString();
+          location.hash = h;
+        },
+        restoreFromHash(){
+          const s = new URLSearchParams(location.hash.replace(/^#/, ""));
+          this.q = s.get("q") || this.q;
+          this.dataset = s.get("ds") || this.dataset;
+          this.severity = s.get("sev") || this.severity;
+          this.fix = s.get("fix") || this.fix;
+          this.cvssMin = Number(s.get("cvss") || this.cvssMin || 0);
+          this.sortDir = s.get("dir") || this.sortDir;
+          this.sortKey = s.get("key") || this.sortKey;
+          this.onlyDirect = s.get("dirc")==="1" ? true : this.onlyDirect;
+          this.page = Number(s.get("p") || this.page || 0);
+        },
+
+        // Top CVE helper
+        applyTopCVE(id){
+          if (!id) { this.q=""; this.applyFilters(true); return; }
+          this.q = id;
+          this.applyFilters(true);
+        },
+
+        // tiny helpers for view save/load
+        saveView(){ try{ localStorage.setItem('sbom_view', location.hash); alert('View saved.'); }catch{} },
+        loadView(){ try{ const h = localStorage.getItem('sbom_view'); if(h){ location.hash=h; this.restoreFromHash(); this.applyFilters(true);} }catch{} }
+      }
     }
-  }
   </script>
 </body>
 </html>
