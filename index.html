@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" x-data="app()" x-init="init()" class="h-full bg-gray-50">
+<html lang="en" class="h-full bg-gray-50">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -22,363 +22,366 @@
   </style>
 </head>
 <body class="h-full">
-  <!-- Top bar -->
-  <header class="sticky top-0 z-40 bg-white/90 backdrop-blur border-b">
-    <div class="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3">
-      <h1 class="text-xl font-semibold">SBOM Explorer</h1>
-      <span class="text-xs text-gray-500" x-text="metaText" aria-live="polite"></span>
-      <div class="ml-auto flex gap-2">
-        <button class="px-3 py-2 border rounded-xl" @click="exportCSV()">Export CSV</button>
-        <button class="px-3 py-2 border rounded-xl" @click="saveView()">Save View</button>
-        <button class="px-3 py-2 border rounded-xl" @click="loadView()">Load View</button>
-      </div>
-    </div>
-
-    <!-- Filters -->
-    <div class="max-w-7xl mx-auto px-4 pb-3 flex items-center gap-2 flex-wrap">
-      <input x-model="q" @input="applyFilters(true)" placeholder="Search (component, purl, vuln id, license)"
-        class="w-72 px-3 py-2 border rounded-xl focus:outline-none focus:ring" />
-
-      <select x-model="dataset" @change="applyFilters(true)" class="px-3 py-2 border rounded-xl">
-        <option value="">All datasets</option>
-        <template x-for="d in datasets" :key="d._key">
-          <option :value="d.id" x-text="`${d.id} (${d.vulnerabilities})`"></option>
-        </template>
-      </select>
-
-      <!-- Dynamic severities: INFO/UNKNOWN hidden if zero in current view -->
-      <select x-model="severity" @change="applyFilters(true)" class="px-3 py-2 border rounded-xl">
-        <option value="">All severities</option>
-        <template x-for="s in sevOpts" :key="s">
-          <option :value="s" x-text="s"></option>
-        </template>
-      </select>
-
-      <select x-model="fix" @change="applyFilters(true)" class="px-3 py-2 border rounded-xl">
-        <option value="">Has fix?</option>
-        <option value="has">Has fix</option>
-        <option value="none">No fix</option>
-      </select>
-
-      <label class="flex items-center gap-2 px-3 py-2 border rounded-xl">
-        <span class="text-sm">CVSS ≥</span>
-        <input type="number" min="0" max="10" step="0.1" x-model.number="cvssMin" @input="applyFilters(true)" class="w-20 outline-none" />
-      </label>
-
-      <label class="flex items-center gap-2 px-3 py-2 border rounded-xl">
-        <input type="checkbox" x-model="onlyDirect" @change="applyFilters(true)">
-        <span class="text-sm">Only direct</span>
-      </label>
-
-      <div class="ml-auto flex items-center gap-2 text-sm">
-        <label>Sort:</label>
-        <select x-model="sortKey" @change="applyFilters()" class="px-2 py-1 border rounded-lg">
-          <option value="severityRank">Severity</option>
-          <option value="cvss">CVSS</option>
-          <option value="component">Component</option>
-          <option value="dataset">Dataset</option>
-        </select>
-        <button class="px-2 py-1 border rounded-lg" @click="sortDir = sortDir==='desc'?'asc':'desc'; applyFilters()"
-                x-text="sortDir==='desc' ? '↓' : '↑'"></button>
-      </div>
-    </div>
-  </header>
-
-  <main class="max-w-7xl mx-auto px-4 py-6" x-cloak>
-    <!-- Summary row (aligned to 3 columns to match next section) -->
-    <section class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6" aria-live="polite">
-      <!-- Left summary spans 2/3 -->
-      <div class="lg:col-span-2 grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div class="card col-span-2">
-          <div class="text-xs text-gray-500">Total vulnerabilities</div>
-          <div class="text-2xl font-semibold" x-text="filtered.length"></div>
-          <div class="muted mt-1" x-text="filterSummary"></div>
+  <!-- Alpine root wrapper -->
+  <div id="app" x-data="app()" x-init="init()">
+    <!-- Top bar -->
+    <header class="sticky top-0 z-40 bg-white/90 backdrop-blur border-b">
+      <div class="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3">
+        <h1 class="text-xl font-semibold">SBOM Explorer</h1>
+        <span class="text-xs text-gray-500" x-text="metaText" aria-live="polite"></span>
+        <div class="ml-auto flex gap-2">
+          <button class="px-3 py-2 border rounded-xl" @click="exportCSV()">Export CSV</button>
+          <button class="px-3 py-2 border rounded-xl" @click="saveView()">Save View</button>
+          <button class="px-3 py-2 border rounded-xl" @click="loadView()">Load View</button>
         </div>
-        <template x-for="sev in ['CRITICAL','HIGH','MEDIUM','LOW']" :key="'sev-'+sev">
-          <div class="card">
-            <div class="text-xs text-gray-500" x-text="sev"></div>
-            <div class="text-xl font-semibold" x-text="sevCountsFiltered[sev] || 0"></div>
-          </div>
-        </template>
       </div>
 
-      <!-- Right: Datasets (exactly 1/3 width, aligns with Top CVEs below) -->
-      <div class="card">
-        <div class="text-sm font-medium mb-3">Datasets in view</div>
-        <template x-if="Object.keys(perDatasetSev).length === 0">
-          <div class="muted">No datasets in the current view.</div>
-        </template>
-        <div class="space-y-3 max-h-60 overflow-auto">
-          <template x-for="(v, name) in perDatasetSev" :key="'ds-'+name">
-            <div>
-              <div class="flex items-center justify-between text-sm">
-                <div class="font-medium" x-text="name"></div>
-                <div class="text-xs text-gray-500" x-text="`${v.total} vulns`"></div>
-              </div>
-              <div class="bar">
-                <div class="bar-fill" :style="`width:${Math.min(100, (v.total/Math.max(1, filtered.length))*100)}%`"></div>
-              </div>
-              <div class="mt-1 flex gap-2 text-[11px] text-gray-600">
-                <span>CRIT: <b x-text="v.CRITICAL||0"></b></span>
-                <span>HIGH: <b x-text="v.HIGH||0"></b></span>
-                <span>MED: <b x-text="v.MEDIUM||0"></b></span>
-                <span>LOW: <b x-text="v.LOW||0"></b></span>
-              </div>
+      <!-- Filters -->
+      <div class="max-w-7xl mx-auto px-4 pb-3 flex items-center gap-2 flex-wrap">
+        <input x-model="q" @input="applyFilters(true)" placeholder="Search (component, purl, vuln id, license)"
+          class="w-72 px-3 py-2 border rounded-xl focus:outline-none focus:ring" />
+
+        <select x-model="dataset" @change="applyFilters(true)" class="px-3 py-2 border rounded-xl">
+          <option value="">All datasets</option>
+          <template x-for="d in datasets" :key="d._key">
+            <option :value="d.id" x-text="`${d.id} (${d.vulnerabilities})`"></option>
+          </template>
+        </select>
+
+        <!-- Dynamic severities: INFO/UNKNOWN hidden if zero in current view -->
+        <select x-model="severity" @change="applyFilters(true)" class="px-3 py-2 border rounded-xl">
+          <option value="">All severities</option>
+          <template x-for="s in sevOpts" :key="s">
+            <option :value="s" x-text="s"></option>
+          </template>
+        </select>
+
+        <select x-model="fix" @change="applyFilters(true)" class="px-3 py-2 border rounded-xl">
+          <option value="">Has fix?</option>
+          <option value="has">Has fix</option>
+          <option value="none">No fix</option>
+        </select>
+
+        <label class="flex items-center gap-2 px-3 py-2 border rounded-xl">
+          <span class="text-sm">CVSS ≥</span>
+          <input type="number" min="0" max="10" step="0.1" x-model.number="cvssMin" @input="applyFilters(true)" class="w-20 outline-none" />
+        </label>
+
+        <label class="flex items-center gap-2 px-3 py-2 border rounded-xl">
+          <input type="checkbox" x-model="onlyDirect" @change="applyFilters(true)">
+          <span class="text-sm">Only direct</span>
+        </label>
+
+        <div class="ml-auto flex items-center gap-2 text-sm">
+          <label>Sort:</label>
+          <select x-model="sortKey" @change="applyFilters()" class="px-2 py-1 border rounded-lg">
+            <option value="severityRank">Severity</option>
+            <option value="cvss">CVSS</option>
+            <option value="component">Component</option>
+            <option value="dataset">Dataset</option>
+          </select>
+          <button class="px-2 py-1 border rounded-lg" @click="sortDir = sortDir==='desc'?'asc':'desc'; applyFilters()"
+                  x-text="sortDir==='desc' ? '↓' : '↑'"></button>
+        </div>
+      </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 py-6" x-cloak>
+      <!-- Summary row (aligned to 3 columns to match next section) -->
+      <section class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6" aria-live="polite">
+        <!-- Left summary spans 2/3 -->
+        <div class="lg:col-span-2 grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div class="card col-span-2">
+            <div class="text-xs text-gray-500">Total vulnerabilities</div>
+            <div class="text-2xl font-semibold" x-text="filtered.length"></div>
+            <div class="muted mt-1" x-text="filterSummary"></div>
+          </div>
+          <template x-for="sev in ['CRITICAL','HIGH','MEDIUM','LOW']" :key="'sev-'+sev">
+            <div class="card">
+              <div class="text-xs text-gray-500" x-text="sev"></div>
+              <div class="text-xl font-semibold" x-text="sevCountsFiltered[sev] || 0"></div>
             </div>
           </template>
         </div>
-      </div>
-    </section>
 
-    <!-- Metrics + Top CVEs (3 equal columns) -->
-    <section class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 md:[grid-auto-rows:1fr] md:items-stretch">
-      <!-- Column 1: Fix availability OR Fix status + Direct/Transitive -->
-      <div class="flex flex-col gap-4 h-full">
-        <!-- Fix ring -->
-        <div class="card h-full flex items-start gap-3" x-show="fixRateFiltered > 0">
-          <div class="shrink-0">
-            <svg viewBox="0 0 44 44" width="64" height="64" aria-label="Fix availability">
-              <circle cx="22" cy="22" r="18" fill="none" stroke="#e5e7eb" stroke-width="6"/>
-              <circle cx="22" cy="22" r="18" fill="none"
-                      :stroke-dasharray="ringCircumference"
-                      :stroke-dashoffset="ringOffsetFix"
-                      :stroke="fixRateFiltered ? ringColor : '#e5e7eb'"
-                      stroke-linecap="round" stroke-width="6"
-                      style="transform: rotate(-90deg); transform-origin: 50% 50%;"/>
-            </svg>
-          </div>
-          <div>
-            <div class="text-xs text-gray-500">Fix availability</div>
-            <div class="text-2xl font-semibold" x-text="fixRateFiltered + '%'"></div>
-            <div class="muted mt-1" x-text="fixRateFiltered ? '% of vulnerabilities with known fixes' : 'No known fixes in this view'"></div>
+        <!-- Right: Datasets -->
+        <div class="card">
+          <div class="text-sm font-medium mb-3">Datasets in view</div>
+          <template x-if="Object.keys(perDatasetSev).length === 0">
+            <div class="muted">No datasets in the current view.</div>
+          </template>
+          <div class="space-y-3 max-h-60 overflow-auto">
+            <template x-for="(v, name) in perDatasetSev" :key="'ds-'+name">
+              <div>
+                <div class="flex items-center justify-between text-sm">
+                  <div class="font-medium" x-text="name"></div>
+                  <div class="text-xs text-gray-500" x-text="`${v.total} vulns`"></div>
+                </div>
+                <div class="bar">
+                  <div class="bar-fill" :style="`width:${Math.min(100, (v.total/Math.max(1, filtered.length))*100)}%`"></div>
+                </div>
+                <div class="mt-1 flex gap-2 text-[11px] text-gray-600">
+                  <span>CRIT: <b x-text="v.CRITICAL||0"></b></span>
+                  <span>HIGH: <b x-text="v.HIGH||0"></b></span>
+                  <span>MED: <b x-text="v.MEDIUM||0"></b></span>
+                  <span>LOW: <b x-text="v.LOW||0"></b></span>
+                </div>
+              </div>
+            </template>
           </div>
         </div>
+      </section>
 
-        <!-- Fix status by severity (when 0%) -->
-        <template x-if="fixRateFiltered === 0">
-          <div class="card">
-            <div class="text-sm font-medium mb-2">Fix status by severity</div>
-            <div class="space-y-2">
-              <template x-for="b in noFixSevBars" :key="'nf-'+b.label">
-                <div class="flex items-center gap-3">
-                  <div class="w-16 text-xs" :style="`color:${b.color}`" x-text="b.label"></div>
-                  <div class="flex-1 h-2 bg-gray-200 rounded">
-                    <div class="h-2 rounded" :style="`width:${b.pct}%; background:${b.color}`"></div>
+      <!-- Metrics + Top CVEs (3 equal columns) -->
+      <section class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 md:[grid-auto-rows:1fr] md:items-stretch">
+        <!-- Column 1 -->
+        <div class="flex flex-col gap-4 h-full">
+          <!-- Fix ring -->
+          <div class="card h-full flex items-start gap-3" x-show="fixRateFiltered > 0">
+            <div class="shrink-0">
+              <svg viewBox="0 0 44 44" width="64" height="64" aria-label="Fix availability">
+                <circle cx="22" cy="22" r="18" fill="none" stroke="#e5e7eb" stroke-width="6"/>
+                <circle cx="22" cy="22" r="18" fill="none"
+                        :stroke-dasharray="ringCircumference"
+                        :stroke-dashoffset="ringOffsetFix"
+                        :stroke="fixRateFiltered ? ringColor : '#e5e7eb'"
+                        stroke-linecap="round" stroke-width="6"
+                        style="transform: rotate(-90deg); transform-origin: 50% 50%;"/>
+              </svg>
+            </div>
+            <div>
+              <div class="text-xs text-gray-500">Fix availability</div>
+              <div class="text-2xl font-semibold" x-text="fixRateFiltered + '%'"></div>
+              <div class="muted mt-1" x-text="fixRateFiltered ? '% of vulnerabilities with known fixes' : 'No known fixes in this view'"></div>
+            </div>
+          </div>
+
+          <!-- Fix status by severity (when 0%) -->
+          <template x-if="fixRateFiltered === 0">
+            <div class="card">
+              <div class="text-sm font-medium mb-2">Fix status by severity</div>
+              <div class="space-y-2">
+                <template x-for="b in noFixSevBars" :key="'nf-'+b.label">
+                  <div class="flex items-center gap-3">
+                    <div class="w-16 text-xs" :style="`color:${b.color}`" x-text="b.label"></div>
+                    <div class="flex-1 h-2 bg-gray-200 rounded">
+                      <div class="h-2 rounded" :style="`width:${b.pct}%; background:${b.color}`"></div>
+                    </div>
+                    <div class="w-10 text-right text-xs text-gray-500" x-text="b.count"></div>
                   </div>
-                  <div class="w-10 text-right text-xs text-gray-500" x-text="b.count"></div>
-                </div>
-              </template>
-              <template x-if="!noFixSevBars.length"><div class="muted">No items</div></template>
+                </template>
+                <template x-if="!noFixSevBars.length"><div class="muted">No items</div></template>
+              </div>
             </div>
-          </div>
-        </template>
+          </template>
 
-        <!-- NEW: Direct vs transitive -->
-        <div class="card">
-          <div class="text-sm font-medium mb-2">Direct vs transitive</div>
-          <div class="flex items-center gap-3">
-            <div class="flex-1 h-2 bg-gray-200 rounded">
-              <div class="h-2 rounded" :style="`width:${directShare.pct}%; background:#6366f1`"></div>
+          <!-- Direct vs transitive -->
+          <div class="card">
+            <div class="text-sm font-medium mb-2">Direct vs transitive</div>
+            <div class="flex items-center gap-3">
+              <div class="flex-1 h-2 bg-gray-200 rounded">
+                <div class="h-2 rounded" :style="`width:${directShare.pct}%; background:#6366f1`"></div>
+              </div>
+              <div class="w-28 text-xs text-gray-600 text-right" x-text="`${directShare.pct}% direct`"></div>
             </div>
-            <div class="w-28 text-xs text-gray-600 text-right" x-text="`${directShare.pct}% direct`"></div>
-          </div>
-          <div class="muted mt-1" x-text="`${directShare.direct} direct · ${directShare.trans} transitive`"></div>
-        </div>
-      </div>
-
-      <!-- Column 2: Severity donut + Top licenses -->
-      <div class="flex flex-col gap-4 h-full">
-        <div class="card h-full flex items-start gap-4">
-          <div class="shrink-0">
-            <svg viewBox="0 0 44 44" width="88" height="88" aria-label="Severity mix">
-              <circle cx="22" cy="22" r="16" fill="none" class="text-gray-200" stroke="currentColor" stroke-width="8"/>
-              <circle cx="22" cy="22" r="16" fill="none"
-                      :stroke="donutSegs.CRITICAL.color" :stroke-dasharray="donutSegs.CRITICAL.dash"
-                      :stroke-dashoffset="donutSegs.CRITICAL.offset" stroke-width="8"
-                      style="transform: rotate(-90deg); transform-origin: 50% 50%;" x-show="donutSegs.CRITICAL.count > 0"/>
-              <circle cx="22" cy="22" r="16" fill="none"
-                      :stroke="donutSegs.HIGH.color" :stroke-dasharray="donutSegs.HIGH.dash"
-                      :stroke-dashoffset="donutSegs.HIGH.offset" stroke-width="8"
-                      style="transform: rotate(-90deg); transform-origin: 50% 50%;" x-show="donutSegs.HIGH.count > 0"/>
-              <circle cx="22" cy="22" r="16" fill="none"
-                      :stroke="donutSegs.MEDIUM.color" :stroke-dasharray="donutSegs.MEDIUM.dash"
-                      :stroke-dashoffset="donutSegs.MEDIUM.offset" stroke-width="8"
-                      style="transform: rotate(-90deg); transform-origin: 50% 50%;" x-show="donutSegs.MEDIUM.count > 0"/>
-              <circle cx="22" cy="22" r="16" fill="none"
-                      :stroke="donutSegs.LOW.color" :stroke-dasharray="donutSegs.LOW.dash"
-                      :stroke-dashoffset="donutSegs.LOW.offset" stroke-width="8"
-                      style="transform: rotate(-90deg); transform-origin: 50% 50%;" x-show="donutSegs.LOW.count > 0"/>
-              <circle cx="22" cy="22" r="16" fill="none"
-                      :stroke="donutSegs.INFO.color" :stroke-dasharray="donutSegs.INFO.dash"
-                      :stroke-dashoffset="donutSegs.INFO.offset" stroke-width="8"
-                      style="transform: rotate(-90deg); transform-origin: 50% 50%;" x-show="donutSegs.INFO.count > 0"/>
-              <circle cx="22" cy="22" r="16" fill="none"
-                      :stroke="donutSegs.UNKNOWN.color" :stroke-dasharray="donutSegs.UNKNOWN.dash"
-                      :stroke-dashoffset="donutSegs.UNKNOWN.offset" stroke-width="8"
-                      style="transform: rotate(-90deg); transform-origin: 50% 50%;" x-show="donutSegs.UNKNOWN.count > 0"/>
-            </svg>
-          </div>
-          <div>
-            <div class="text-sm font-medium mb-2">Severity mix</div>
-            <div class="text-xs space-y-1">
-              <template x-for="seg in donutLegend" :key="'leg-'+seg.label">
-                <div class="flex items-center gap-2">
-                  <span class="inline-block w-3 h-3 rounded" :style="`background:${seg.color}`"></span>
-                  <span class="text-gray-600" x-text="`${seg.label}: ${seg.count}`"></span>
-                </div>
-              </template>
-              <div class="muted mt-2" x-text="filterSummary"></div>
-            </div>
+            <div class="muted mt-1" x-text="`${directShare.direct} direct · ${directShare.trans} transitive`"></div>
           </div>
         </div>
 
-        <!-- NEW: Top licenses -->
+        <!-- Column 2 -->
+        <div class="flex flex-col gap-4 h-full">
+          <div class="card h-full flex items-start gap-4">
+            <div class="shrink-0">
+              <svg viewBox="0 0 44 44" width="88" height="88" aria-label="Severity mix">
+                <circle cx="22" cy="22" r="16" fill="none" class="text-gray-200" stroke="currentColor" stroke-width="8"/>
+                <circle cx="22" cy="22" r="16" fill="none"
+                        :stroke="donutSegs.CRITICAL.color" :stroke-dasharray="donutSegs.CRITICAL.dash"
+                        :stroke-dashoffset="donutSegs.CRITICAL.offset" stroke-width="8"
+                        style="transform: rotate(-90deg); transform-origin: 50% 50%;" x-show="donutSegs.CRITICAL.count > 0"/>
+                <circle cx="22" cy="22" r="16" fill="none"
+                        :stroke="donutSegs.HIGH.color" :stroke-dasharray="donutSegs.HIGH.dash"
+                        :stroke-dashoffset="donutSegs.HIGH.offset" stroke-width="8"
+                        style="transform: rotate(-90deg); transform-origin: 50% 50%;" x-show="donutSegs.HIGH.count > 0"/>
+                <circle cx="22" cy="22" r="16" fill="none"
+                        :stroke="donutSegs.MEDIUM.color" :stroke-dasharray="donutSegs.MEDIUM.dash"
+                        :stroke-dashoffset="donutSegs.MEDIUM.offset" stroke-width="8"
+                        style="transform: rotate(-90deg); transform-origin: 50% 50%;" x-show="donutSegs.MEDIUM.count > 0"/>
+                <circle cx="22" cy="22" r="16" fill="none"
+                        :stroke="donutSegs.LOW.color" :stroke-dasharray="donutSegs.LOW.dash"
+                        :stroke-dashoffset="donutSegs.LOW.offset" stroke-width="8"
+                        style="transform: rotate(-90deg); transform-origin: 50% 50%;" x-show="donutSegs.LOW.count > 0"/>
+                <circle cx="22" cy="22" r="16" fill="none"
+                        :stroke="donutSegs.INFO.color" :stroke-dasharray="donutSegs.INFO.dash"
+                        :stroke-dashoffset="donutSegs.INFO.offset" stroke-width="8"
+                        style="transform: rotate(-90deg); transform-origin: 50% 50%;" x-show="donutSegs.INFO.count > 0"/>
+                <circle cx="22" cy="22" r="16" fill="none"
+                        :stroke="donutSegs.UNKNOWN.color" :stroke-dasharray="donutSegs.UNKNOWN.dash"
+                        :stroke-dashoffset="donutSegs.UNKNOWN.offset" stroke-width="8"
+                        style="transform: rotate(-90deg); transform-origin: 50% 50%;" x-show="donutSegs.UNKNOWN.count > 0"/>
+              </svg>
+            </div>
+            <div>
+              <div class="text-sm font-medium mb-2">Severity mix</div>
+              <div class="text-xs space-y-1">
+                <template x-for="seg in donutLegend" :key="'leg-'+seg.label">
+                  <div class="flex items-center gap-2">
+                    <span class="inline-block w-3 h-3 rounded" :style="`background:${seg.color}`"></span>
+                    <span class="text-gray-600" x-text="`${seg.label}: ${seg.count}`"></span>
+                  </div>
+                </template>
+                <div class="muted mt-2" x-text="filterSummary"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Top licenses -->
+          <div class="card">
+            <div class="text-sm font-medium mb-2">Top licenses</div>
+            <div class="space-y-2">
+              <template x-for="row in licenseMix" :key="'lic-'+row.name">
+                <div class="flex items-center gap-3">
+                  <div class="w-36 truncate text-xs text-gray-700" :title="row.name" x-text="row.name"></div>
+                  <div class="flex-1 h-2 bg-gray-200 rounded">
+                    <div class="h-2 rounded" :style="`width:${row.pct}%; background:#3b82f6`"></div>
+                  </div>
+                  <div class="w-8 text-right text-xs text-gray-500" x-text="row.count"></div>
+                </div>
+              </template>
+              <template x-if="!licenseMix.length"><div class="muted">No license data</div></template>
+            </div>
+          </div>
+        </div>
+
+        <!-- Column 3: Top CVEs -->
         <div class="card">
-          <div class="text-sm font-medium mb-2">Top licenses</div>
+          <div class="flex items-center justify-between mb-2">
+            <div class="text-sm font-medium">Top CVEs</div>
+            <button class="text-xs underline" @click="applyTopCVE()">Clear filter</button>
+          </div>
+          <template x-if="!(metrics.topCVEs||[]).length">
+            <div class="muted">No CVE IDs found.</div>
+          </template>
+          <ul class="text-sm grid grid-cols-1 gap-3 max-h-80 overflow-auto">
+            <template x-for="cve in (metrics.topCVEs || [])" :key="'cve-'+cve.id">
+              <li class="border rounded-xl p-3">
+                <div class="font-medium">
+                  <button class="text-blue-600 underline" @click="applyTopCVE(cve.id)" x-text="cve.id"></button>
+                </div>
+                <div class="muted mt-1">
+                  <span x-text="`Count: ${cve.count}`"></span>
+                  · <span x-text="`Max CVSS: ${cve.maxCVSS ?? '-'}`"></span>
+                  <template x-if="(cve.datasets||[]).length">· <span x-text="`Datasets: ${cve.datasets.join(', ')}`"></span></template>
+                </div>
+              </li>
+            </template>
+          </ul>
+        </div>
+      </section>
+
+      <!-- Lightweight analytics row -->
+      <section class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div class="card">
+          <div class="text-sm font-medium mb-2">CVSS distribution</div>
+          <svg :viewBox="`0 0 ${sparkW} ${sparkH}`" :width="sparkW" :height="sparkH" role="img" aria-label="CVSS sparkline">
+            <polyline :points="sparkGrid" fill="none" stroke="#e5e7eb" stroke-width="1"/>
+            <polyline :points="cvssPath" fill="none" stroke="#2563eb" stroke-width="2"/>
+          </svg>
+          <div class="muted mt-2" x-text="cvssStatsText"></div>
+        </div>
+
+        <div class="card">
+          <div class="text-sm font-medium mb-2">Top components by vulnerabilities</div>
           <div class="space-y-2">
-            <template x-for="row in licenseMix" :key="'lic-'+row.name">
+            <template x-for="row in topComponents" :key="'tc-'+row.name">
               <div class="flex items-center gap-3">
                 <div class="w-36 truncate text-xs text-gray-700" :title="row.name" x-text="row.name"></div>
                 <div class="flex-1 h-2 bg-gray-200 rounded">
-                  <div class="h-2 rounded" :style="`width:${row.pct}%; background:#3b82f6`"></div>
+                  <div class="h-2 rounded" :style="`width:${row.pct}%; background:#10b981`"></div>
                 </div>
                 <div class="w-8 text-right text-xs text-gray-500" x-text="row.count"></div>
               </div>
             </template>
-            <template x-if="!licenseMix.length"><div class="muted">No license data</div></template>
           </div>
         </div>
-      </div>
 
-      <!-- Column 3: Top CVEs -->
-      <div class="card">
-        <div class="flex items-center justify-between mb-2">
-          <div class="text-sm font-medium">Top CVEs</div>
-          <button class="text-xs underline" @click="applyTopCVE()">Clear filter</button>
-        </div>
-        <template x-if="!(metrics.topCVEs||[]).length">
-          <div class="muted">No CVE IDs found.</div>
-        </template>
-        <ul class="text-sm grid grid-cols-1 gap-3 max-h-80 overflow-auto">
-          <template x-for="cve in (metrics.topCVEs || [])" :key="'cve-'+cve.id">
-            <li class="border rounded-xl p-3">
-              <div class="font-medium">
-                <button class="text-blue-600 underline" @click="applyTopCVE(cve.id)" x-text="cve.id"></button>
+        <div class="card">
+          <div class="text-sm font-medium mb-2">Fix availability by dataset</div>
+          <div class="space-y-2">
+            <template x-for="row in dsFixRates" :key="'dsfr-'+row.name">
+              <div class="flex items-center gap-3">
+                <div class="w-32 truncate text-xs text-gray-700" :title="row.name" x-text="row.name"></div>
+                <div class="flex-1 h-2 bg-gray-200 rounded">
+                  <div class="h-2 rounded" :style="`width:${row.rate}%; background:${row.rate>=67?'#10b981':row.rate>=33?'#f59e0b':'#ef4444'}`"></div>
+                </div>
+                <div class="w-10 text-right text-xs text-gray-500" x-text="row.rate + '%'"></div>
               </div>
-              <div class="muted mt-1">
-                <span x-text="`Count: ${cve.count}`"></span>
-                · <span x-text="`Max CVSS: ${cve.maxCVSS ?? '-'}`"></span>
-                <template x-if="(cve.datasets||[]).length">· <span x-text="`Datasets: ${cve.datasets.join(', ')}`"></span></template>
-              </div>
-            </li>
-          </template>
-        </ul>
-      </div>
-    </section>
-
-    <!-- Lightweight analytics row -->
-    <section class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-      <div class="card">
-        <div class="text-sm font-medium mb-2">CVSS distribution</div>
-        <svg :viewBox="`0 0 ${sparkW} ${sparkH}`" :width="sparkW" :height="sparkH" role="img" aria-label="CVSS sparkline">
-          <polyline :points="sparkGrid" fill="none" stroke="#e5e7eb" stroke-width="1"/>
-          <polyline :points="cvssPath" fill="none" stroke="#2563eb" stroke-width="2"/>
-        </svg>
-        <div class="muted mt-2" x-text="cvssStatsText"></div>
-      </div>
-
-      <div class="card">
-        <div class="text-sm font-medium mb-2">Top components by vulnerabilities</div>
-        <div class="space-y-2">
-          <template x-for="row in topComponents" :key="'tc-'+row.name">
-            <div class="flex items-center gap-3">
-              <div class="w-36 truncate text-xs text-gray-700" :title="row.name" x-text="row.name"></div>
-              <div class="flex-1 h-2 bg-gray-200 rounded">
-                <div class="h-2 rounded" :style="`width:${row.pct}%; background:#10b981`"></div>
-              </div>
-              <div class="w-8 text-right text-xs text-gray-500" x-text="row.count"></div>
-            </div>
-          </template>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="text-sm font-medium mb-2">Fix availability by dataset</div>
-        <div class="space-y-2">
-          <template x-for="row in dsFixRates" :key="'dsfr-'+row.name">
-            <div class="flex items-center gap-3">
-              <div class="w-32 truncate text-xs text-gray-700" :title="row.name" x-text="row.name"></div>
-              <div class="flex-1 h-2 bg-gray-200 rounded">
-                <div class="h-2 rounded" :style="`width:${row.rate}%; background:${row.rate>=67?'#10b981':row.rate>=33?'#f59e0b':'#ef4444'}`"></div>
-              </div>
-              <div class="w-10 text-right text-xs text-gray-500" x-text="row.rate + '%'"></div>
-            </div>
-          </template>
-        </div>
-      </div>
-    </section>
-
-    <!-- Vulnerabilities table -->
-    <section>
-      <div class="mb-2 text-sm text-gray-600">
-        <span x-text="`Showing ${filtered.length} of ${items.length} vulnerabilities`"></span>
-      </div>
-      <div class="overflow-x-auto bg-white border rounded-2xl shadow-sm">
-        <table class="min-w-full text-sm">
-          <thead class="bg-gray-50">
-            <tr class="text-left">
-              <th class="px-4 py-3">Severity</th>
-              <th class="px-4 py-3">CVSS</th>
-              <th class="px-4 py-3">Component</th>
-              <th class="px-4 py-3">Version</th>
-              <th class="px-4 py-3">License</th>
-              <th class="px-4 py-3">Vuln ID</th>
-              <th class="px-4 py-3">Dataset</th>
-              <th class="px-4 py-3">Links</th>
-            </tr>
-          </thead>
-          <tbody>
-            <template x-for="row in paged" :key="row._key">
-              <tr class="border-t hover:bg-gray-50">
-                <td class="px-4 py-2">
-                  <span class="px-2 py-0.5 rounded-lg text-xs font-semibold" :class="badge(row.severity)" x-text="row.severity || 'UNKNOWN'"></span>
-                </td>
-                <td class="px-4 py-2" x-text="row.cvss ?? '-'"></td>
-                <td class="px-4 py-2">
-                  <div class="font-medium" x-text="row.component || '-'"></div>
-                  <div class="text-xs text-gray-500 truncate max-w-[28rem]" x-text="row.purl"></div>
-                </td>
-                <td class="px-4 py-2" x-text="row.version || '-'"></td>
-                <td class="px-4 py-2">
-                  <template x-for="(l,i) in (row.licenses || [])" :key="row._key+'-lic-'+i">
-                    <span class="mr-1 px-1.5 py-0.5 bg-gray-100 rounded" x-text="l"></span>
-                  </template>
-                </td>
-                <td class="px-4 py-2" x-text="row.id || '-'"></td>
-                <td class="px-4 py-2">
-                  <span class="text-xs px-2 py-1 bg-gray-100 rounded" x-text="row.dataset"></span>
-                  <template x-if="row.direct"><span class="ml-1 text-[10px] px-1 py-0.5 bg-emerald-100 text-emerald-700 rounded">direct</span></template>
-                </td>
-                <td class="px-4 py-2">
-                  <template x-for="(u,i) in (row.urls || [])" :key="row._key+'-url-'+i">
-                    <a class="text-blue-600 underline mr-2" :href="u" target="_blank" rel="noopener" x-text="`ref${i+1}`"></a>
-                  </template>
-                </td>
-              </tr>
             </template>
-          </tbody>
-        </table>
-      </div>
-
-      <div class="mt-4 flex items-center justify-between">
-        <div class="text-sm text-gray-600">Page <span x-text="page+1"></span> / <span x-text="pages"></span></div>
-        <div class="flex gap-2">
-          <button class="px-3 py-1 border rounded-lg" :disabled="page===0" @click="prev()">Prev</button>
-          <button class="px-3 py-1 border rounded-lg" :disabled="page+1>=pages" @click="next()">Next</button>
+          </div>
         </div>
-      </div>
-    </section>
-  </main>
+      </section>
+
+      <!-- Vulnerabilities table -->
+      <section>
+        <div class="mb-2 text-sm text-gray-600">
+          <span x-text="`Showing ${filtered.length} of ${items.length} vulnerabilities`"></span>
+        </div>
+        <div class="overflow-x-auto bg-white border rounded-2xl shadow-sm">
+          <table class="min-w-full text-sm">
+            <thead class="bg-gray-50">
+              <tr class="text-left">
+                <th class="px-4 py-3">Severity</th>
+                <th class="px-4 py-3">CVSS</th>
+                <th class="px-4 py-3">Component</th>
+                <th class="px-4 py-3">Version</th>
+                <th class="px-4 py-3">License</th>
+                <th class="px-4 py-3">Vuln ID</th>
+                <th class="px-4 py-3">Dataset</th>
+                <th class="px-4 py-3">Links</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="row in paged" :key="row._key">
+                <tr class="border-t hover:bg-gray-50">
+                  <td class="px-4 py-2">
+                    <span class="px-2 py-0.5 rounded-lg text-xs font-semibold" :class="badge(row.severity)" x-text="row.severity || 'UNKNOWN'"></span>
+                  </td>
+                  <td class="px-4 py-2" x-text="row.cvss ?? '-'"></td>
+                  <td class="px-4 py-2">
+                    <div class="font-medium" x-text="row.component || '-'"></div>
+                    <div class="text-xs text-gray-500 truncate max-w-[28rem]" x-text="row.purl"></div>
+                  </td>
+                  <td class="px-4 py-2" x-text="row.version || '-'"></td>
+                  <td class="px-4 py-2">
+                    <template x-for="(l,i) in (row.licenses || [])" :key="row._key+'-lic-'+i">
+                      <span class="mr-1 px-1.5 py-0.5 bg-gray-100 rounded" x-text="l"></span>
+                    </template>
+                  </td>
+                  <td class="px-4 py-2" x-text="row.id || '-'"></td>
+                  <td class="px-4 py-2">
+                    <span class="text-xs px-2 py-1 bg-gray-100 rounded" x-text="row.dataset"></span>
+                    <template x-if="row.direct"><span class="ml-1 text-[10px] px-1 py-0.5 bg-emerald-100 text-emerald-700 rounded">direct</span></template>
+                  </td>
+                  <td class="px-4 py-2">
+                    <template x-for="(u,i) in (row.urls || [])" :key="row._key+'-url-'+i">
+                      <a class="text-blue-600 underline mr-2" :href="u" target="_blank" rel="noopener" x-text="`ref${i+1}`"></a>
+                    </template>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="mt-4 flex items-center justify-between">
+          <div class="text-sm text-gray-600">Page <span x-text="page+1"></span> / <span x-text="pages"></span></div>
+          <div class="flex gap-2">
+            <button class="px-3 py-1 border rounded-lg" :disabled="page===0" @click="prev()">Prev</button>
+            <button class="px-3 py-1 border rounded-lg" :disabled="page+1>=pages" @click="next()">Next</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div><!-- /#app -->
 
   <script>
   function app(){
@@ -412,12 +415,12 @@
       },
       get ringColor(){
         const p = this.fixRateFiltered;
-        if (p >= 67) return '#10b981'; // green
-        if (p >= 33) return '#f59e0b'; // amber
-        return '#ef4444';              // red
+        if (p >= 67) return '#10b981';
+        if (p >= 33) return '#f59e0b';
+        return '#ef4444';
       },
 
-      // severity donut (fixed circles so colors always render)
+      // severity donut
       donutSegs: {
         CRITICAL:{dash:'0 1000', offset:0, color:'#dc2626', count:0},
         HIGH:{dash:'0 1000', offset:0, color:'#f87171', count:0},
@@ -452,7 +455,7 @@
         }
       },
 
-      // sparkline (wider & downsampled)
+      // sparkline
       sparkW: 360, sparkH: 64,
       cvssPath: "", sparkGrid: "", cvssStatsText: "",
       buildCvssSpark(){
@@ -474,7 +477,7 @@
         this.cvssStatsText = `n=${n} · min=${min?.toFixed(1)} · med=${med} · p90=${q(0.9).toFixed(1)}`;
       },
 
-      // top components micro bars
+      // top components
       topComponents: [],
       buildTopComponents(){
         const counts = {};
@@ -489,7 +492,7 @@
         this.topComponents = top.map(x=>({ ...x, pct: Math.round(100*x.count/max) }));
       },
 
-      // fix rate by dataset micro bars
+      // fix rate by dataset
       dsFixRates: [],
       buildDsFixRates(){
         const map = {};
@@ -506,7 +509,7 @@
         this.dsFixRates = rows.slice(0,6);
       },
 
-      // replacement card data for 0% fix-rate
+      // 0% fix replacement bars
       noFixSevBars: [],
       buildNoFixBars(){
         const nf = this.filtered.filter(r => !(r.fixedVersions||[]).length);
@@ -523,7 +526,7 @@
           }));
       },
 
-      // NEW: licenses + direct/transitive
+      // licenses + direct/transitive
       licenseMix: [],
       directShare: {direct:0, trans:0, pct:0},
       buildLicenseMix(){
@@ -546,7 +549,7 @@
         this.directShare = { direct, trans, pct: Math.round(100*direct/total) };
       },
 
-      // dropdown options: hide INFO/UNKNOWN unless present in current view (excluding severity filter)
+      // dropdown options (hide INFO/UNKNOWN unless present without severity filter)
       updateSeverityOptions(){
         const q = this.q.trim().toLowerCase();
         const ds = this.dataset, fix = this.fix, cv = Number(this.cvssMin)||0, only = this.onlyDirect;
@@ -646,7 +649,7 @@
         this.buildLicenseMix();
         this.buildDirectShare();
 
-        // refresh dropdown options based on current view (excluding severity)
+        // refresh dropdown options
         this.updateSeverityOptions();
 
         this.persistToHash();
@@ -737,7 +740,7 @@
         this.applyFilters(true);
       },
 
-      // tiny helpers for view save/load
+      // view save/load
       saveView(){ try{ localStorage.setItem('sbom_view', location.hash); alert('View saved.'); }catch{} },
       loadView(){ try{ const h = localStorage.getItem('sbom_view'); if(h){ location.hash=h; this.restoreFromHash(); this.applyFilters(true);} }catch{} }
     }
