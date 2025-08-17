@@ -120,7 +120,7 @@
     <!-- Row 2: Left analytics (8/12) + Right Top CVEs (4/12) -->
     <section class="grid grid-cols-1 lg:grid-cols-12 gap-4 mb-6">
       <!-- Left analytics grid -->
-      <div class="lg:col-span-8 grid grid-cols-1 md:grid-cols-3 gap-4 md:[grid-auto-rows:1fr] items-stretch">
+      <div class="lg:col-span-8 grid gap-4 items-stretch [grid-template-columns:repeat(auto-fit,minmax(260px,1fr))]">
         <!-- Fix availability -->
         <div class="card h-full flex items-start gap-3" x-show="fixRateFiltered > 0">
           <div class="shrink-0">
