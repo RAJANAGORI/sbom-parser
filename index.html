@@ -137,31 +137,23 @@
         <span class="text-sm">Only direct</span>
       </label>
 
-      <div class="ml-auto flex items-center gap-2">
-        <label for="sortKey" class="sr-only">Sort</label>
-        <select id="sortKey"
-                x-model="sortKey"
-                @change="applyFilters()"
-                class="px-3 py-2 border rounded-xl"
-                aria-label="Sort key">
+      <div class="ml-auto flex items-center gap-2 text-sm">
+        <label class="whitespace-nowrap">Sort:</label>
+        <select x-model="sortKey" @change="applyFilters()" class="px-2 py-1 border rounded-lg" aria-label="Sort key">
           <option value="severityRank">Severity</option>
           <option value="cvss">CVSS</option>
           <option value="component">Component</option>
           <option value="dataset">Dataset</option>
         </select>
+        <button class="px-2 py-1 border rounded-lg" @click="sortDir = sortDir==='desc'?'asc':'desc'; applyFilters()" :aria-label="'Sort ' + (sortDir==='desc'?'descending':'ascending')" x-text="sortDir==='desc' ? '↓' : '↑'"></button>
 
-        <button class="px-3 py-2 border rounded-xl"
-                @click="sortDir = sortDir==='desc' ? 'asc' : 'desc'; applyFilters()"
-                :aria-label="'Sort ' + (sortDir==='desc' ? 'descending' : 'ascending')"
-                x-text="sortDir==='desc' ? '↓' : '↑'">
-        </button>
-
-        <button class="px-3 py-2 border rounded-xl"
-                @click="resetFilters()"
-                aria-label="Reset all filters"
-                title="Reset all filters">
-          Reset
-        </button>
+        <!-- Desktop reset button -->
+        <button
+          class="px-3 py-2 border rounded-xl hidden sm:inline-flex"
+          @click="resetFilters()"
+          aria-label="Reset all filters"
+          title="Reset all filters"
+        >Reset</button>
       </div>
     </div>
   </header>
