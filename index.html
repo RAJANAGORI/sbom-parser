@@ -130,9 +130,9 @@
     </section>
 
     <!-- Metrics + Top CVEs (microcharts integrated) -->
-    <section class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+    <section class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 md:[grid-auto-rows:1fr] md:items-stretch">
       <!-- Fix availability ring gauge -->
-      <div class="card flex items-center gap-3">
+      <div class="card h-full flex items-center gap-3">
         <div class="shrink-0">
           <svg viewBox="0 0 44 44" width="64" height="64" aria-label="Fix availability ring"
                :title="`Fix availability: ${fixRateFiltered}%`">
@@ -140,8 +140,8 @@
             <circle cx="22" cy="22" r="18" fill="none"
                     :stroke-dasharray="ringCircumference"
                     :stroke-dashoffset="ringOffsetFix"
-                    class="text-emerald-500"
-                    stroke="currentColor" stroke-linecap="round" stroke-width="6"
+                    stroke-linecap="round" stroke-width="6"
+                    :stroke="gaugeColor"
                     style="transform: rotate(-90deg); transform-origin: 50% 50%;"/>
           </svg>
         </div>
@@ -153,7 +153,7 @@
       </div>
 
       <!-- Severity mix donut -->
-      <div class="card md:col-span-1">
+      <div class="card h-full md:col-span-1">
         <div class="text-sm font-medium mb-2">Severity mix (filtered)</div>
         <div class="flex items-center gap-3">
           <svg viewBox="0 0 44 44" width="88" height="88" aria-label="Severity donut">
@@ -162,15 +162,15 @@
               <circle cx="22" cy="22" r="16" fill="none"
                       :stroke-dasharray="seg.dash"
                       :stroke-dashoffset="seg.offset"
-                      :class="seg.cls"
-                      stroke="currentColor" stroke-width="8"
+                      :stroke="seg.color"
+                      stroke-width="8"
                       style="transform: rotate(-90deg); transform-origin: 50% 50%;"/>
             </template>
           </svg>
           <div class="text-xs space-y-1">
             <template x-for="seg in donutLegend" :key="'leg-'+seg.label">
               <div class="flex items-center gap-2">
-                <span class="inline-block w-3 h-3 rounded" :class="seg.bg"></span>
+                <span class="inline-block w-3 h-3 rounded" :style="`background:${seg.color}`"></span>
                 <span class="text-gray-600" x-text="`${seg.label}: ${seg.count}`"></span>
               </div>
             </template>
@@ -180,7 +180,7 @@
       </div>
 
       <!-- Top CVEs (kept, now a single column) -->
-      <div class="card md:col-span-1">
+      <div class="card h-full md:col-span-1">
         <div class="flex items-center justify-between mb-2">
           <div class="text-sm font-medium">Top CVEs</div>
           <button class="text-xs underline" @click="applyTopCVE()">Clear filter</button>
@@ -201,6 +201,58 @@
               </div>
             </li>
           </template>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Quick analytics (lightweight) -->
+    <section class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 md:[grid-auto-rows:1fr] md:items-stretch">
+      <!-- CVSS sparkline -->
+      <div class="card h-full">
+        <div class="text-sm font-medium mb-2">CVSS distribution (filtered)</div>
+        <svg :viewBox="`0 0 ${sparkW} ${sparkH}`" :width="sparkW" :height="sparkH" role="img" aria-label="CVSS sparkline">
+          <polyline :points="sparkGrid" fill="none" class="text-gray-200" stroke="currentColor" stroke-width="1"/>
+          <path :d="cvssSparkPath" fill="none" stroke="#2563eb" stroke-width="2"/>
+        </svg>
+        <div class="muted mt-2">
+          <span x-text="`n=${cvssStats.count}`"></span>
+          · <span x-text="`min=${cvssStats.min}`"></span>
+          · <span x-text="`med=${cvssStats.med}`"></span>
+          · <span x-text="`p90=${cvssStats.p90}`"></span>
+        </div>
+      </div>
+
+      <!-- Top components -->
+      <div class="card h-full">
+        <div class="text-sm font-medium mb-2">Top components (by vulns, filtered)</div>
+        <ul class="text-sm space-y-2 max-h-40 overflow-auto">
+          <template x-for="t in topComponents" :key="'tc-'+t.name">
+            <li class="flex items-center gap-2">
+              <div class="w-24 truncate" :title="t.name" x-text="t.name"></div>
+              <div class="flex-1 h-2 bg-gray-200 rounded">
+                <div class="h-2 rounded" :style="`width:${t.pct}%; background:#10b981`"></div>
+              </div>
+              <div class="w-8 text-right text-xs text-gray-600" x-text="t.count"></div>
+            </li>
+          </template>
+          <template x-if="!topComponents.length"><li class="muted">No data</li></template>
+        </ul>
+      </div>
+
+      <!-- Fix rate by dataset -->
+      <div class="card h-full">
+        <div class="text-sm font-medium mb-2">Fix rate by dataset (filtered)</div>
+        <ul class="text-sm space-y-2 max-h-40 overflow-auto">
+          <template x-for="d in fixByDataset" :key="'fx-'+d.name">
+            <li class="flex items-center gap-2">
+              <div class="w-28 truncate" :title="d.name" x-text="d.name"></div>
+              <div class="flex-1 h-2 bg-gray-200 rounded">
+                <div class="h-2 rounded" :style="`width:${d.rate}%; background:#f59e0b`"></div>
+              </div>
+              <div class="w-12 text-right text-xs text-gray-600" x-text="`${d.rate}%`"></div>
+            </li>
+          </template>
+          <template x-if="!fixByDataset.length"><li class="muted">No data</li></template>
         </ul>
       </div>
     </section>
@@ -288,40 +340,91 @@
       metaText: "",
 
       // ---- microchart helpers ----
-      ringCircumference: 2 * Math.PI * 18, // r=18 for ring gauge
+      ringCircumference: 2 * Math.PI * 18,
       get ringOffsetFix(){
         const pct = Math.max(0, Math.min(100, this.fixRateFiltered)) / 100;
         return this.ringCircumference * (1 - pct);
       },
-
+      get gaugeColor(){
+        // red -> amber -> green based on rate
+        const v = this.fixRateFiltered;
+        if (v >= 75) return '#10b981';
+        if (v >= 40) return '#f59e0b';
+        return '#ef4444';
+      },
       donutSegments: [],
       donutLegend: [],
       donutColors: {
-        CRITICAL: { cls: "text-red-600",   bg: "bg-red-600" },
-        HIGH:     { cls: "text-red-400",   bg: "bg-red-400" },
-        MEDIUM:   { cls: "text-amber-500", bg: "bg-amber-500" },
-        LOW:      { cls: "text-green-500", bg: "bg-green-500" },
-        INFO:     { cls: "text-gray-400",  bg: "bg-gray-400" },
-        UNKNOWN:  { cls: "text-gray-300",  bg: "bg-gray-300" },
+        CRITICAL: { color: '#dc2626' },
+        HIGH:     { color: '#f87171' },
+        MEDIUM:   { color: '#f59e0b' },
+        LOW:      { color: '#10b981' },
+        INFO:     { color: '#9ca3af' },
+        UNKNOWN:  { color: '#d1d5db' },
       },
       buildSeverityDonut(){
         const order = ['CRITICAL','HIGH','MEDIUM','LOW','INFO','UNKNOWN'];
         const counts = this.sevCountsFiltered || {};
         const total = Object.values(counts).reduce((a,b)=>a+(b||0),0) || 0;
-        const r = 16; const C = 2 * Math.PI * r;
-        let acc = 0;
+        const r = 16; const C = 2 * Math.PI * r; let acc = 0;
         this.donutSegments = []; this.donutLegend = [];
         for (const label of order){
-          const count = counts[label] || 0;
-          if (!count) continue;
+          const count = counts[label] || 0; if (!count) continue;
           const pct = count / Math.max(1, total);
           const dash = `${(pct*C).toFixed(2)} ${(C - pct*C).toFixed(2)}`;
-          const offset = (C * (1 - acc)).toFixed(2);
-          acc += pct;
+          const offset = (C * (1 - acc)).toFixed(2); acc += pct;
           const color = this.donutColors[label] || this.donutColors.UNKNOWN;
-          this.donutSegments.push({ label, dash, offset, cls: color.cls, count });
-          this.donutLegend.push({ label, bg: color.bg, count });
+          this.donutSegments.push({ label, dash, offset, color: color.color, count });
+          this.donutLegend.push({ label, color: color.color, count });
         }
+      },
+      // sparkline state
+      sparkW: 200, sparkH: 48, cvssSparkPath: '', sparkGrid: '',
+      cvssStats: { count: 0, min: '-', med: '-', p90: '-' },
+      buildCvssSpark(){
+        const values = this.filtered.map(r => typeof r.cvss === 'number' ? r.cvss : NaN).filter(v => !isNaN(v));
+        const W=this.sparkW, H=this.sparkH, P=4; // padding
+        this.cvssStats.count = values.length;
+        if (!values.length){ this.cvssSparkPath=''; this.sparkGrid=''; this.cvssStats.min='-'; this.cvssStats.med='-'; this.cvssStats.p90='-'; return; }
+        const min = Math.min(...values), max = Math.max(...values);
+        const sorted = [...values].sort((a,b)=>a-b);
+        const perc = (p)=>{ const idx = Math.min(sorted.length-1, Math.max(0, Math.round(p*(sorted.length-1)))); return sorted[idx]; };
+        this.cvssStats = { count: values.length, min: min.toFixed(1), med: perc(0.5).toFixed(1), p90: perc(0.9).toFixed(1) };
+        // histogram bins 0..10 (10 bins)
+        const bins = new Array(10).fill(0);
+        for (const v of values){ const b = Math.min(9, Math.max(0, Math.floor(v))); bins[b]++; }
+        const maxBin = Math.max(...bins) || 1; const innerW = W-2*P, innerH = H-2*P;
+        const step = innerW/(bins.length-1);
+        let d='';
+        bins.forEach((c,i)=>{
+          const x = P + i*step;
+          const y = P + innerH * (1 - c/maxBin);
+          d += (i===0?`M${x},${y}`:` L${x},${y}`);
+        });
+        this.cvssSparkPath = d;
+        // faint baseline grid (0,0.5,1)
+        const g0 = P + innerH, g1 = P + innerH/2, g2 = P;
+        this.sparkGrid = `${P},${g0} ${W-P},${g0} ${P},${g1} ${W-P},${g1} ${P},${g2} ${W-P},${g2}`;
+      },
+      // quick lists
+      topComponents: [],
+      fixByDataset: [],
+      buildQuickLists(){
+        // top components
+        const map = new Map();
+        for (const r of this.filtered){ const k=r.component||'-'; map.set(k,(map.get(k)||0)+1); }
+        const arr = [...map.entries()].sort((a,b)=>b[1]-a[1]).slice(0,6);
+        const total = this.filtered.length || 1;
+        this.topComponents = arr.map(([name,count])=>({ name, count, pct: Math.round(100*count/total) }));
+        // fix rate by dataset
+        const dmap = new Map();
+        for (const r of this.filtered){
+          const k=r.dataset||'unknown';
+          const o=dmap.get(k)||{ total:0, fixed:0 };
+          o.total++; if ((r.fixedVersions||[]).length) o.fixed++; dmap.set(k,o);
+        }
+        this.fixByDataset = [...dmap.entries()].map(([name,o])=>({ name, rate: Math.round(100*(o.fixed/(o.total||1))) }))
+          .sort((a,b)=>b.rate-a.rate).slice(0,6);
       },
       // ---- end microchart helpers ----
 
@@ -390,9 +493,10 @@
         this.fixRateFiltered = this.filtered.length ? Math.round(100 * (hasFix/this.filtered.length)) : 0;
         this.perDatasetSev = this.groupByDatasetSev(this.filtered);
         this.filterSummary = this.buildFilterSummary();
-
         // build microcharts
         this.buildSeverityDonut();
+        this.buildCvssSpark();
+        this.buildQuickLists();
 
         this.persistToHash();
       },
