@@ -9,7 +9,6 @@
   <!-- Minimal, fast CDN libs -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 
   <style>
     .card{ @apply bg-white border rounded-2xl shadow-sm p-4; }
@@ -18,9 +17,12 @@
     .muted{ @apply text-xs text-gray-500; }
     .skeleton{ @apply animate-pulse bg-gray-200 rounded; }
     a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+    .bar { @apply h-2 w-full bg-gray-200 rounded; }
+    .bar-fill { @apply h-2 rounded; background: linear-gradient(90deg, #ef4444, #f59e0b, #10b981); }
   </style>
 </head>
 <body class="h-full">
+  <!-- Top bar -->
   <header class="sticky top-0 z-40 bg-white/90 backdrop-blur border-b">
     <div class="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3">
       <h1 class="text-xl font-semibold">SBOM Explorer</h1>
@@ -82,7 +84,7 @@
   </header>
 
   <main class="max-w-7xl mx-auto px-4 py-6" x-cloak>
-    <!-- Summary -->
+    <!-- Always-on summaries (no charts) -->
     <section class="grid grid-cols-1 lg:grid-cols-12 gap-4 mb-6" aria-live="polite">
       <div class="lg:col-span-7 grid grid-cols-2 md:grid-cols-4 gap-3">
         <div class="card col-span-2">
@@ -99,41 +101,35 @@
         </template>
       </div>
 
-      <!-- Donut: only if there’s data -->
-      <template x-if="Object.values(sevCountsFiltered).reduce((a,b)=>a+b,0) > 0">
-        <div class="card lg:col-span-5">
-          <div class="text-sm font-medium mb-2">Severity distribution (filtered)</div>
-          <canvas id="donut" height="160"></canvas>
+      <!-- Per-dataset compact summary with bar -->
+      <div class="card lg:col-span-5">
+        <div class="text-sm font-medium mb-3">Datasets (filtered presence)</div>
+        <template x-if="Object.keys(perDatasetSev).length === 0">
+          <div class="muted">No datasets in the current filter.</div>
+        </template>
+        <div class="space-y-3 max-h-60 overflow-auto">
+          <template x-for="(v, name) in perDatasetSev" :key="'ds-'+name">
+            <div>
+              <div class="flex items-center justify-between text-sm">
+                <div class="font-medium" x-text="name"></div>
+                <div class="text-xs text-gray-500" x-text="`${v.total} vulns`"></div>
+              </div>
+              <div class="bar">
+                <div class="bar-fill" :style="`width:${Math.min(100, (v.total/Math.max(1, filtered.length))*100)}%`"></div>
+              </div>
+              <div class="mt-1 flex gap-2 text-[11px] text-gray-600">
+                <span>CRIT: <b x-text="v.CRITICAL||0"></b></span>
+                <span>HIGH: <b x-text="v.HIGH||0"></b></span>
+                <span>MED: <b x-text="v.MEDIUM||0"></b></span>
+                <span>LOW: <b x-text="v.LOW||0"></b></span>
+              </div>
+            </div>
+          </template>
         </div>
-      </template>
-      <template x-if="Object.values(sevCountsFiltered).reduce((a,b)=>a+b,0) === 0">
-        <div class="card lg:col-span-5">
-          <div class="text-sm font-medium mb-1">Severity distribution</div>
-          <div class="muted">No data to visualize.</div>
-        </div>
-      </template>
-
-      <!-- Severity bar: only if there’s data -->
-      <template x-if="Object.values(sevCountsFiltered).reduce((a,b)=>a+b,0) > 0">
-        <div class="card lg:col-span-12">
-          <div class="text-sm font-medium mb-2">Severity breakdown (filtered)</div>
-          <canvas id="barSevFiltered" height="80"></canvas>
-        </div>
-      </template>
-
-      <!-- Per-dataset stacked: show only if >=1 dataset present after filters -->
-      <template x-if="Object.keys(perDatasetSev).length > 0">
-        <div class="card lg:col-span-12">
-          <div class="flex items-center justify-between mb-2">
-            <div class="text-sm font-medium">Per-dataset severity (filtered set)</div>
-            <div class="muted">Shows only datasets present after filters</div>
-          </div>
-          <canvas id="barDatasetStacked" height="120"></canvas>
-        </div>
-      </template>
+      </div>
     </section>
 
-    <!-- Metrics + Top CVEs -->
+    <!-- Metrics + Top CVEs (always populated if present in snapshot) -->
     <section class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
       <div class="card">
         <div class="text-xs text-gray-500">Fix availability rate (filtered)</div>
@@ -165,7 +161,7 @@
       </div>
     </section>
 
-    <!-- Vulnerabilities table (always useful) -->
+    <!-- Vulnerabilities table -->
     <section>
       <div class="mb-2 text-sm text-gray-600">
         <span x-text="`Showing ${filtered.length} of ${items.length} vulnerabilities`"></span>
@@ -230,34 +226,42 @@
   <script>
   function app(){
     return {
+      // state from parse-sboms.json
       items: [], filtered: [], paged: [], datasets: [],
       overall: { total: 0, severityCounts: {} },
       metrics: { fixAvailabilityRate:0, topCVEs:[] },
 
+      // filters
       dataset: "", q: "", severity: "", fix: "", cvssMin: 0, onlyDirect: false,
       sevOrder: ['CRITICAL','HIGH','MEDIUM','LOW','INFO','UNKNOWN'],
 
+      // derived (filtered)
       sevCountsFiltered: {}, fixRateFiltered: 0, filterSummary: "", perDatasetSev: {},
+
+      // sort/paging
       sortKey: "severityRank", sortDir: "desc", page: 0, perPage: 50, pages: 0,
 
-      tab: "vulns",
       metaText: "",
 
-      donutChart: null, barSev: null, barStacked: null,
-
       async init(){
-        // The workflow drops parse-sboms.json next to index.html
         const snap = await fetch("./parse-sboms.json?_=" + Date.now()).then(r => r.json());
-        this.items = (snap.items || []).map((r, idx) => ({ ...r, _key: (r.dataset || 'ds') + '::' + (r.id || (r.component || 'comp') + '@' + (r.version || '')) + '::' + idx }));
-        this.datasets = (snap.datasets || []).map((d, i) => ({ ...d, _key: 'ds-' + (d.id || i) })).sort((a,b)=>String(a.id).localeCompare(String(b.id)));
+        this.items = (snap.items || []).map((r, idx) => ({
+          ...r,
+          _key: (r.dataset || 'ds') + '::' + (r.id || (r.component || 'comp') + '@' + (r.version || '')) + '::' + idx
+        }));
+        this.datasets = (snap.datasets || [])
+          .map((d, i) => ({ ...d, _key: 'ds-' + (d.id || i) }))
+          .sort((a,b)=>String(a.id).localeCompare(String(b.id)));
+
         this.overall = snap.overall || this.overall;
         this.metrics = snap.metrics || this.metrics;
         this.metaText = snap.generatedAt ? `updated ${new Date(snap.generatedAt).toLocaleString()}` : '';
+
         this.restoreFromHash();
         this.applyFilters(true);
-        this.drawAll();
       },
 
+      // utils
       badge(sev){
         const s = (sev||"").toUpperCase();
         const base = "px-2 py-0.5 rounded-lg text-xs font-semibold";
@@ -268,7 +272,7 @@
         return base+" bg-gray-100 text-gray-800";
       },
 
-      applyFilters(){
+      applyFilters(buildGroup=false){
         const q = this.q.trim().toLowerCase();
         const sev = this.severity, fix = this.fix, cv = Number(this.cvssMin) || 0, ds = this.dataset;
 
@@ -286,26 +290,27 @@
           return true;
         });
 
+        // sorting
+        const key = this.sortKey;
         const dir = this.sortDir === "desc" ? -1 : 1;
         this.filtered.sort((a,b)=>{
-          const A = (a[this.sortKey] ?? ""), B = (b[this.sortKey] ?? "");
+          const A = (a[key] ?? ""), B = (b[key] ?? "");
           if (typeof A === "number" && typeof B === "number") return (A-B)*dir;
           return String(A).localeCompare(String(B)) * dir;
         });
 
+        // paginate
         this.page = 0; this.paginate();
 
-        // derived metrics
+        // derive filtered metrics
         this.sevCountsFiltered = this.countSev(this.filtered);
         const hasFix = this.filtered.filter(r => (r.fixedVersions||[]).length).length;
         this.fixRateFiltered = this.filtered.length ? Math.round(100 * (hasFix/this.filtered.length)) : 0;
         this.perDatasetSev = this.groupByDatasetSev(this.filtered);
         this.filterSummary = this.buildFilterSummary();
+
         this.persistToHash();
-
-        this.drawAll();
       },
-
       paginate(){
         this.pages = Math.max(1, Math.ceil(this.filtered.length / this.perPage));
         const start = this.page * this.perPage;
@@ -314,6 +319,7 @@
       next(){ if (this.page+1 < this.pages){ this.page++; this.paginate(); this.persistToHash(); } },
       prev(){ if (this.page>0){ this.page--; this.paginate(); this.persistToHash(); } },
 
+      // helpers for filtered stats
       countSev(list){
         const out = {CRITICAL:0,HIGH:0,MEDIUM:0,LOW:0,INFO:0,UNKNOWN:0};
         for (const r of list){ const s=(r.severity||'UNKNOWN').toUpperCase(); out[s]=(out[s]||0)+1; }
@@ -341,50 +347,7 @@
         return bits.length ? bits.join(' · ') : 'no filters';
       },
 
-      // charts (draw only when there’s data)
-      drawAll(){
-        this.drawDonut();
-        this.drawSeverityBar();
-        this.drawDatasetStacked();
-      },
-      canDraw(id){ const el = document.getElementById(id); return !!(el && el.getContext && el.getContext('2d')); },
-
-      drawDonut(){
-        const labels = ['CRITICAL','HIGH','MEDIUM','LOW','INFO'];
-        const data = labels.map(k => this.sevCountsFiltered[k] || 0);
-        if (!this.canDraw('donut') || !window.Chart || data.reduce((a,b)=>a+b,0) === 0) return;
-        if (this.donutChart) try{ this.donutChart.destroy(); }catch(e){}
-        this.donutChart = new Chart(document.getElementById('donut'), {
-          type: 'doughnut',
-          data: { labels, datasets: [{ data }] },
-          options: { plugins: { legend: { position: 'bottom' } }, cutout: '65%' }
-        });
-      },
-      drawSeverityBar(){
-        const labels = ['CRITICAL','HIGH','MEDIUM','LOW','INFO'];
-        const data = labels.map(k => this.sevCountsFiltered[k] || 0);
-        if (!this.canDraw('barSevFiltered') || !window.Chart || data.reduce((a,b)=>a+b,0) === 0) return;
-        if (this.barSev) try{ this.barSev.destroy(); }catch(e){}
-        this.barSev = new Chart(document.getElementById('barSevFiltered'), {
-          type: 'bar',
-          data: { labels, datasets: [{ label: 'Count', data }] },
-          options: { plugins:{ legend:{ display:false } }, responsive:true, scales:{ y:{ beginAtZero:true } } }
-        });
-      },
-      drawDatasetStacked(){
-        const dsNames = Object.keys(this.perDatasetSev).sort();
-        if (!this.canDraw('barDatasetStacked') || !window.Chart || dsNames.length === 0) return;
-        const sevKeys = ['CRITICAL','HIGH','MEDIUM','LOW','INFO'];
-        const datasets = sevKeys.map(s => ({ label:s, data: dsNames.map(d => this.perDatasetSev[d]?.[s] || 0), stack:'sev' }));
-        if (this.barStacked) try{ this.barStacked.destroy(); }catch(e){}
-        this.barStacked = new Chart(document.getElementById('barDatasetStacked'), {
-          type: 'bar',
-          data: { labels: dsNames, datasets },
-          options: { responsive:true, plugins:{ legend:{ position:'bottom' } }, scales:{ x:{ stacked:true }, y:{ stacked:true, beginAtZero:true } } }
-        });
-      },
-
-      // CSV export
+      // CSV
       exportCSV(){
         const rows = this.filtered;
         if (!rows.length) { alert("No rows to export."); return; }
@@ -404,31 +367,18 @@
         URL.revokeObjectURL(url);
       },
 
-      // Save/restore view
-      saveView(){
-        const s = { q:this.q, dataset:this.dataset, severity:this.severity, fix:this.fix, cvssMin:this.cvssMin, onlyDirect:this.onlyDirect, sortKey:this.sortKey, sortDir:this.sortDir };
-        localStorage.setItem("sbom_view", JSON.stringify(s));
-        alert("View saved.");
-      },
-      loadView(){
-        const s = JSON.parse(localStorage.getItem("sbom_view") || "null");
-        if (!s) { alert("No saved view."); return; }
-        Object.assign(this, s);
-        this.applyFilters(true);
-      },
-
-      // URL state (unchanged)
+      // URL state
       persistToHash(){
         const h = new URLSearchParams({
-          tab: this.tab, q: this.q || "", ds: this.dataset || "", sev: this.severity || "",
-          fix: this.fix || "", cvss: String(this.cvssMin || 0), dir: this.sortDir, key: this.sortKey, dirc: this.onlyDirect ? "1" : "0",
+          q: this.q || "", ds: this.dataset || "", sev: this.severity || "",
+          fix: this.fix || "", cvss: String(this.cvssMin || 0),
+          dir: this.sortDir, key: this.sortKey, dirc: this.onlyDirect ? "1" : "0",
           p: String(this.page)
         }).toString();
         location.hash = h;
       },
       restoreFromHash(){
         const s = new URLSearchParams(location.hash.replace(/^#/, ""));
-        this.tab = s.get("tab") || this.tab;
         this.q = s.get("q") || this.q;
         this.dataset = s.get("ds") || this.dataset;
         this.severity = s.get("sev") || this.severity;
