@@ -66,7 +66,7 @@
     <!-- Filters (inline on desktop, drawer on mobile) -->
     <div class="max-w-7xl mx-auto px-3 sm:px-4 pb-2 sm:pb-3 hidden sm:flex items-center gap-2 flex-wrap">
       <!-- Search with typeahead -->
-      <div class="relative w-full sm:w-80">
+      <div class="relative w-full sm:w-80" x-ref="searchWrap">
         <label for="q" class="sr-only">Search components, purls, CVEs, or licenses</label>
         <input
           id="q"
@@ -79,22 +79,25 @@
           @keydown.escape.prevent="hideSuggest()"
           placeholder="Search (component, purl, vuln id, license)"
           class="w-full px-3 py-2 border rounded-xl focus:outline-none focus:ring"
-          aria-autocomplete="list" aria-expanded="true" aria-haspopup="listbox" inputmode="search" autocomplete="off"
+          aria-autocomplete="list" :aria-expanded="(showSuggest && suggestions.length) ? 'true' : 'false'" aria-haspopup="listbox" inputmode="search" autocomplete="off"
         />
         <!-- suggestions -->
         <div
+          x-ref="suggest"
           x-show="showSuggest && suggestions.length"
-          @mousedown.prevent
+          @pointerdown.prevent
           class="absolute z-50 mt-1 w-full bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-xl shadow-lg max-h-72 overflow-auto"
           role="listbox"
         >
           <template x-for="(s, i) in suggestions" :key="s.key">
             <button
               type="button"
+              @pointerdown.prevent
               @click="pick(s)"
               :class="['w-full text-left px-3 py-2 flex items-center gap-2', i===selIdx ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-gray-50 dark:hover:bg-neutral-800']"
               :aria-selected="i===selIdx"
               role="option"
+              style="min-height:44px"
             >
               <span class="text-[11px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-neutral-800" x-text="s.group"></span>
               <span class="truncate flex-1" x-text="s.label"></span>
@@ -143,6 +146,14 @@
           <option value="dataset">Dataset</option>
         </select>
         <button class="px-2 py-1 border rounded-lg" @click="sortDir = sortDir==='desc'?'asc':'desc'; applyFilters()" :aria-label="'Sort ' + (sortDir==='desc'?'descending':'ascending')" x-text="sortDir==='desc' ? '↓' : '↑'"></button>
+
+        <!-- Desktop reset button -->
+        <button
+          class="px-3 py-2 border rounded-xl hidden sm:inline-flex"
+          @click="resetFilters()"
+          aria-label="Reset all filters"
+          title="Reset all filters"
+        >Reset</button>
       </div>
     </div>
   </header>
@@ -209,7 +220,7 @@
       </div>
       <div class="sticky-actions p-3 grid grid-cols-2 gap-2">
         <button class="btn" @click="applyFilters(true); mobileFilters=false">Apply</button>
-        <button class="btn" @click="q='';dataset='';severity='';fix='';cvssMin=0;onlyDirect=false;applyFilters(true); mobileFilters=false">Reset</button>
+        <button class="btn" @click="resetFilters(); mobileFilters=false">Reset</button>
       </div>
     </section>
   </div>
@@ -729,11 +740,15 @@
           this.updateSeverityOptions();
           this.applyFilters(true);
 
-          // click-away closes suggestions
+          // click/tap outside -> close suggestions, but allow taps inside the panel
           document.addEventListener('click', (e)=>{
-            const el = this.$refs.search;
-            if (!el) return;
-            if (!el.contains(e.target)) this.hideSuggest();
+            const wrap = this.$refs.searchWrap;
+            const panel = this.$refs.suggest;
+            if (!wrap) return;
+            const t = e.target;
+            const insideWrap = wrap.contains(t);
+            const insidePanel = panel ? panel.contains(t) : false;
+            if (!insideWrap && !insidePanel) this.hideSuggest();
           }, { capture: true });
 
           // Build non-critical charts after idle (snappier on low-end phones)
@@ -903,6 +918,21 @@
 
         // Top CVE helper
         applyTopCVE(id){ this.q = id || ""; this.applyFilters(true); },
+
+        // Reset helper (used by desktop button and mobile sheet)
+        resetFilters(){
+          this.q = "";
+          this.dataset = "";
+          this.severity = "";
+          this.fix = "";
+          this.cvssMin = 0;
+          this.onlyDirect = false;
+          this.sortKey = "severityRank";
+          this.sortDir = "desc";
+          this.page = 0;
+          this.updateSeverityOptions();
+          this.applyFilters(true);
+        },
 
         // tiny helpers for view save/load
         saveView(){ try{ localStorage.setItem('sbom_view', location.hash); alert('View saved.'); }catch{} },
