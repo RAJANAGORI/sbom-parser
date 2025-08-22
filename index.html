@@ -299,7 +299,7 @@
             <input id="q-d" x-ref="search" x-model="q" @input="onInput" @keydown.down.prevent="moveSel(1)"
               @keydown.up.prevent="moveSel(-1)" @keydown.enter.prevent="applySel()"
               @keydown.escape.prevent="hideSuggest()" placeholder="Search (component, purl, vuln id, license)"
-              class="w-full px-3 py-2 border border-[#2d3748] rounded-xl bg-[#1a1f2e] text-[#e2e8f0] placeholder-[#94a3b8]"
+              class="w-72 px-3 py-2 border border-[#2d3748] rounded-xl bg-[#1a1f2e] text-[#e2e8f0] placeholder-[#94a3b8]"
               inputmode="search" autocomplete="off" />
             <!-- suggestions -->
             <div x-ref="suggest" x-show="showSuggest && suggestions.length" @pointerdown.prevent
@@ -376,7 +376,7 @@
             <input id="q-m" x-ref="search" x-model="q" @input="onInput" @keydown.down.prevent="moveSel(1)"
               @keydown.up.prevent="moveSel(-1)" @keydown.enter.prevent="applySel()"
               @keydown.escape.prevent="hideSuggest()" placeholder="Search (component, purl, vull id, license)"
-              class="w-full px-3 py-2 border border-[#2d3748] rounded-xl bg-[#1a1f2e] text-[#e2e8f0] placeholder-[#94a3b8]"
+              class="w-72 px-3 py-2 border border-[#2d3748] rounded-xl bg-[#1a1f2e] text-[#e2e8f0] placeholder-[#94a3b8]"
               inputmode="search" autocomplete="off" />
             <!-- suggestions -->
             <div x-ref="suggest" x-show="showSuggest && suggestions.length" @pointerdown.prevent
