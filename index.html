@@ -89,7 +89,7 @@
     <!-- Filters (header inline) now hidden on desktop in favor of left sidebar; mobile drawer remains -->
     <div class="max-w-7xl mx-auto px-3 sm:px-4 pb-2 sm:pb-3 hidden">
       <!-- Search with typeahead -->
-      <div class="relative w-full sm:w-96" x-ref="searchWrap">
+      <div class="relative w-full" x-ref="searchWrap">
         <label for="q" class="sr-only">Search components, purls, CVEs, or licenses</label>
         <input
           id="q"
@@ -226,12 +226,9 @@
               <option value="none">No fix</option>
             </select>
           </label>
-          <div class="flex items-center gap-3">
-            <label class="flex items-center gap-2 px-3 py-2 border border-[#2d3748] rounded-xl flex-1 bg-[#1a1f2e]">
-              <span class="text-sm text-[#e2e8f0]">CVSS ≥</span>
-              <input type="number" min="0" max="10" step="0.1" x-model.number="cvssMin" class="w-32 outline-none bg-transparent text-[#e2e8f0] placeholder-[#94a3b8]" />
-            </label>
-          </div>
+          <label class="text-xs text-[#94a3b8]">CVSS ≥
+            <input type="number" min="0" max="10" step="0.1" x-model.number="cvssMin" class="mt-1 w-full px-3 py-2 border border-[#2d3748] rounded-xl bg-[#1a1f2e] text-[#e2e8f0] outline-none" />
+          </label>
           
         </div>
       </div>
@@ -285,12 +282,9 @@
               <option value="none">No fix</option>
             </select>
           </label>
-          <div class="flex items-center gap-3">
-            <label class="flex items-center gap-2 px-3 py-2 border border-[#2d3748] rounded-xl flex-1 bg-[#1a1f2e]">
-              <span class="text-sm text-[#e2e8f0]">CVSS ≥</span>
-              <input type="number" min="0" max="10" step="0.1" x-model.number="cvssMin" class="w-32 outline-none bg-transparent text-[#e2e8f0] placeholder-[#94a3b8]" />
-            </label>
-          </div>
+          <label class="text-xs text-[#94a3b8]">CVSS ≥
+            <input type="number" min="0" max="10" step="0.1" x-model.number="cvssMin" class="mt-1 w-full px-3 py-2 border border-[#2d3748] rounded-xl bg-[#1a1f2e] text-[#e2e8f0] outline-none" />
+          </label>
           
         </div>
       </div>
@@ -493,7 +487,6 @@
               <th class="px-4 py-3">License</th>
               <th class="px-4 py-3">Vuln ID</th>
               <th class="px-4 py-3 w-40">Dataset</th>
-              <th class="px-4 py-3 w-40">Links</th>
             </tr>
           </thead>
           <tbody>
@@ -529,12 +522,7 @@
                     <svg aria-hidden="true" viewBox="0 0 24 24" width="12" height="12" class="text-[#94a3b8]"><path fill="currentColor" d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6V4zm2 0v16h8a2 2 0 0 0 2-2V8l-6-4h-4z"/></svg>
                     <span x-text="row.dataset"></span>
                   </span>
-                  <template x-if="row.direct"><span class="ml-1 text-[10px] px-1 py-0.5 bg-emerald-100 text-emerald-700 rounded">direct</span></template>
-                </td>
-                <td class="px-4 py-2" :data-label="'Links'">
-                  <template x-for="(u,i) in (row.urls || [])" :key="row._key+'-url-'+i">
-                    <a class="text-blue-600 underline mr-2" :href="u" target="_blank" rel="noopener" x-text="`ref${i+1}`"></a>
-                  </template>
+                  <template x-if="row.direct"><span class="ml-1 text-xs px-1 py-0.5 bg-emerald-100 text-emerald-700 rounded">direct</span></template>
                 </td>
               </tr>
             </template>
