@@ -350,6 +350,32 @@
     .compact-table td:nth-child(7) {
       min-width: 80px;
     }
+
+    /* Mobile sidebar improvements */
+    .mobile-sidebar-handle {
+      background: #4a5568;
+      opacity: 0.6;
+      border-radius: 9999px;
+      height: 4px;
+      width: 32px;
+    }
+
+    /* Ensure button text is always visible */
+    .btn {
+      color: #e2e8f0;
+    }
+
+    .btn:not([class*="bg-[#A1D6E2]"]) {
+      color: #e2e8f0 !important;
+    }
+
+    /* Mobile filter button improvements */
+    @media (max-width: 640px) {
+      .sticky-actions .btn {
+        font-weight: 500;
+        color: #e2e8f0;
+      }
+    }
   </style>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -575,7 +601,7 @@
     <section
       class="absolute inset-x-0 bottom-0 max-h-[85vh] bg-[#1a1f2e] border-t border-[#2d3748] rounded-t-2xl shadow-lg flex sm:hidden flex-col">
       <header class="p-3 flex items-center gap-2">
-        <div class="mx-auto h-1 w-10 rounded bg-[#2d3748]"></div>
+        <div class="mobile-sidebar-handle"></div>
         <button class="ml-auto p-2 rounded-xl border border-[#2d3748] bg-[#1a1f2e]" @click="toggleSidebar()"
           aria-label="Close filters">✕</button>
       </header>
@@ -642,7 +668,7 @@
           :class="lastAction === 'apply' ? 'bg-[#A1D6E2] text-[#0a0e14] border-[#A1D6E2]' : 'bg-[#1a1f2e] border-[#2d3748] text-[#e2e8f0]'"
           @click="applyFilters(true); toggleSidebar(); lastAction='apply'">Apply</button>
         <button class="btn"
-          :class="lastAction === 'reset' ? 'bg-[#A1D6E2] text-[#0a0e14] border-[#A1D6E2]' : 'bg-[#1a1f2e] border-[#2d3748] text-[#0a0e14]'"
+          :class="lastAction === 'reset' ? 'bg-[#A1D6E2] text-[#0a0e14] border-[#A1D6E2]' : 'bg-[#1a1f2e] border-[#2d3748] text-[#e2e8f0]'"
           @click="resetFilters(); toggleSidebar(); lastAction='reset'">Reset</button>
       </div>
     </section>
