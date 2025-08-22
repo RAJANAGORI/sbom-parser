@@ -55,6 +55,10 @@
         <!-- funnel icon -->
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 5h18M6 12h12M10 19h4"/></svg>
       </button>
+      <button class="hidden sm:inline-flex items-center gap-2 px-3 py-2 border rounded-xl" @click="mobileFilters=true" aria-label="Open filters">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 5h18M6 12h12M10 19h4"/></svg>
+        Filters
+      </button>
       <h1 class="text-base sm:text-xl font-semibold">SBOM Explorer</h1>
       <span class="text-xs text-gray-500 ml-2" x-text="metaText" aria-live="polite"></span>
 
@@ -173,10 +177,74 @@
     </div>
   </header>
 
-  <!-- Mobile filter drawer / sheet -->
-  <div x-cloak x-show="mobileFilters" class="fixed inset-0 z-50 sm:hidden" aria-modal="true" role="dialog">
+  <!-- Unified filter drawer / sheet: bottom sheet on mobile, left sheet on desktop -->
+  <div x-cloak x-show="mobileFilters" class="fixed inset-0 z-50" aria-modal="true" role="dialog">
     <div class="absolute inset-0 bg-black/30" @click="mobileFilters=false"></div>
-    <section class="absolute inset-x-0 bottom-0 max-h-[85vh] bg-white dark:bg-neutral-950 border-t border-gray-200 dark:border-neutral-800 rounded-t-2xl shadow-lg flex flex-col">
+    <!-- Desktop left sheet -->
+    <section class="hidden sm:flex absolute left-0 top-0 bottom-0 w-full sm:w-[28rem] max-w-full sm:max-w-[28rem] bg-white dark:bg-neutral-950 border-r border-gray-200 dark:border-neutral-800 shadow-lg flex-col">
+      <header class="p-3 flex items-center gap-2 border-b border-gray-200 dark:border-neutral-800">
+        <div class="font-medium">Filters</div>
+        <button class="ml-auto p-2 rounded-xl border" @click="mobileFilters=false" aria-label="Close filters">✕</button>
+      </header>
+      <div class="p-3 space-y-3 overflow-auto">
+        <div class="relative">
+          <label for="q-d" class="sr-only">Search</label>
+          <input id="q-d" x-model="q" @input="onInput" placeholder="Search (component, purl, vuln id, license)" class="w-full px-3 py-3 border rounded-xl" inputmode="search" autocomplete="off" />
+        </div>
+        <div class="grid grid-cols-1 gap-3">
+          <label class="text-xs text-gray-600">Dataset
+            <select x-model="dataset" class="mt-1 w-full px-3 py-2 border rounded-xl">
+              <option value="">All datasets</option>
+              <template x-for="d in datasets" :key="d._key">
+                <option :value="d.id" x-text="`${d.id} (${d.vulnerabilities})`"></option>
+              </template>
+            </select>
+          </label>
+          <label class="text-xs text-gray-600">Severity
+            <select x-model="severity" class="mt-1 w-full px-3 py-2 border rounded-xl">
+              <option value="">All severities</option>
+              <template x-for="s in sevOpts" :key="s">
+                <option :value="s" x-text="s"></option>
+              </template>
+            </select>
+          </label>
+          <label class="text-xs text-gray-600">Fix status
+            <select x-model="fix" class="mt-1 w-full px-3 py-2 border rounded-xl">
+              <option value="">Has fix?</option>
+              <option value="has">Has fix</option>
+              <option value="none">No fix</option>
+            </select>
+          </label>
+          <div class="flex items-center gap-3">
+            <label class="flex items-center gap-2 px-3 py-2 border rounded-xl flex-1">
+              <span class="text-sm">CVSS ≥</span>
+              <input type="number" min="0" max="10" step="0.1" x-model.number="cvssMin" class="w-20 outline-none" />
+            </label>
+            <label class="flex items-center gap-2 px-3 py-2 border rounded-xl">
+              <input type="checkbox" x-model="onlyDirect">
+              <span class="text-sm">Only direct</span>
+            </label>
+          </div>
+          <div class="flex items-center gap-2">
+            <label class="text-xs text-gray-600">Sort by
+              <select x-model="sortKey" class="mt-1 w-full px-3 py-2 border rounded-xl">
+                <option value="severityRank">Severity</option>
+                <option value="cvss">CVSS</option>
+                <option value="component">Component</option>
+                <option value="dataset">Dataset</option>
+              </select>
+            </label>
+            <button class="mt-6 px-3 py-2 border rounded-xl" @click="sortDir = sortDir==='desc'?'asc':'desc'">Sort <span x-text="sortDir==='desc'?'↓':'↑'"></span></button>
+          </div>
+        </div>
+      </div>
+      <div class="p-3 grid grid-cols-2 gap-2 border-t border-gray-200 dark:border-neutral-800">
+        <button class="btn" @click="applyFilters(true); mobileFilters=false">Apply</button>
+        <button class="btn" @click="resetFilters(); mobileFilters=false">Reset</button>
+      </div>
+    </section>
+    <!-- Mobile bottom sheet -->
+    <section class="absolute inset-x-0 bottom-0 max-h-[85vh] bg-white dark:bg-neutral-950 border-t border-gray-200 dark:border-neutral-800 rounded-t-2xl shadow-lg flex sm:hidden flex-col">
       <header class="p-3 flex items-center gap-2">
         <div class="mx-auto h-1 w-10 rounded bg-gray-300"></div>
         <button class="ml-auto p-2 rounded-xl border" @click="mobileFilters=false" aria-label="Close filters">✕</button>
@@ -241,84 +309,7 @@
   </div>
 
   <main class="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6" x-cloak>
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
-      <!-- Left sidebar filters (desktop) -->
-      <aside class="hidden lg:block lg:col-span-3">
-        <div class="card sticky top-24 space-y-3" aria-label="Filters sidebar">
-          <div class="relative" x-ref="searchWrap">
-            <label for="q-side" class="text-xs text-gray-600">Search</label>
-            <input
-              id="q-side"
-              x-ref="search"
-              x-model="q"
-              @input="onInput"
-              @keydown.down.prevent="moveSel(1)"
-              @keydown.up.prevent="moveSel(-1)"
-              @keydown.enter.prevent="applySel()"
-              @keydown.escape.prevent="hideSuggest()"
-              placeholder="component, purl, vuln id, license"
-              class="mt-1 w-full px-3 py-2 border rounded-xl focus:outline-none focus:ring"
-              inputmode="search" autocomplete="off"
-            />
-          </div>
-
-          <label class="text-xs text-gray-600">Dataset
-            <select x-model="dataset" @change="applyFilters(true)" class="mt-1 w-full px-3 py-2 border rounded-xl">
-              <option value="">All datasets</option>
-              <template x-for="d in datasets" :key="d._key">
-                <option :value="d.id" x-text="`${d.id} (${d.vulnerabilities})`"></option>
-              </template>
-            </select>
-          </label>
-
-          <label class="text-xs text-gray-600">Severity
-            <select x-model="severity" @change="applyFilters(true)" class="mt-1 w-full px-3 py-2 border rounded-xl">
-              <option value="">All severities</option>
-              <template x-for="s in sevOpts" :key="s">
-                <option :value="s" x-text="s"></option>
-              </template>
-            </select>
-          </label>
-
-          <label class="text-xs text-gray-600">Fix status
-            <select x-model="fix" @change="applyFilters(true)" class="mt-1 w-full px-3 py-2 border rounded-xl">
-              <option value="">Has fix?</option>
-              <option value="has">Has fix</option>
-              <option value="none">No fix</option>
-            </select>
-          </label>
-
-          <div class="flex items-center gap-3">
-            <label class="flex items-center gap-2 px-3 py-2 border rounded-xl flex-1">
-              <span class="text-sm">CVSS ≥</span>
-              <input type="number" min="0" max="10" step="0.1" x-model.number="cvssMin" @input="applyFilters(true)" class="w-20 outline-none" />
-            </label>
-            <label class="flex items-center gap-2 px-3 py-2 border rounded-xl">
-              <input type="checkbox" x-model="onlyDirect" @change="applyFilters(true)">
-              <span class="text-sm">Only direct</span>
-            </label>
-          </div>
-
-          <div class="flex items-center gap-2">
-            <label class="text-xs text-gray-600 flex-1">Sort by
-              <select x-model="sortKey" @change="applyFilters()" class="mt-1 w-full px-3 py-2 border rounded-xl">
-                <option value="severityRank">Severity</option>
-                <option value="cvss">CVSS</option>
-                <option value="component">Component</option>
-                <option value="dataset">Dataset</option>
-              </select>
-            </label>
-            <button class="mt-6 px-3 py-2 border rounded-xl" @click="sortDir = sortDir==='desc'?'asc':'desc'; applyFilters()" :aria-label="'Sort ' + (sortDir==='desc'?'descending':'ascending')" x-text="sortDir==='desc' ? '↓' : '↑'"></button>
-          </div>
-
-          <div class="grid grid-cols-2 gap-2 pt-2">
-            <button class="px-3 py-2 border rounded-xl btn-accent" @click="applyFilters(true)">Apply</button>
-            <button class="px-3 py-2 border rounded-xl" @click="resetFilters()">Reset</button>
-          </div>
-        </div>
-      </aside>
-
-      <div class="lg:col-span-9 space-y-6">
+    <div class="space-y-6">
     <!-- Row 1: Totals (8/12) + Datasets (4/12) -->
     <section class="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4 mb-4 sm:mb-6" aria-live="polite">
       <!-- Left: totals + severities (6 equal tiles) -->
