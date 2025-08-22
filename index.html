@@ -188,9 +188,9 @@
         <button class="ml-auto p-2 rounded-xl border border-[#2d3748] bg-[#1a1f2e]" @click="mobileFilters=false" aria-label="Close filters">✕</button>
       </header>
       <div class="p-3 space-y-3 overflow-auto">
-        <div class="relative" x-ref="searchWrap">
-          <label for="q-d" class="sr-only">Search</label>
-          <input id="q-d" x-ref="search" x-model="q" @input="onInput" @keydown.down.prevent="moveSel(1)" @keydown.up.prevent="moveSel(-1)" @keydown.enter.prevent="applySel()" @keydown.escape.prevent="hideSuggest()" placeholder="Search (component, purl, vuln id, license)" class="w-full px-3 py-3 border border-[#2d3748] rounded-xl bg-[#1a1f2e] text-[#e2e8f0] placeholder-[#94a3b8]" inputmode="search" autocomplete="off" />
+        <label class="text-xs text-[#94a3b8]">Search
+          <div class="relative mt-1" x-ref="searchWrap">
+            <input id="q-d" x-ref="search" x-model="q" @input="onInput" @keydown.down.prevent="moveSel(1)" @keydown.up.prevent="moveSel(-1)" @keydown.enter.prevent="applySel()" @keydown.escape.prevent="hideSuggest()" placeholder="Search (component, purl, vuln id, license)" class="w-full px-3 py-2 border border-[#2d3748] rounded-xl bg-[#1a1f2e] text-[#e2e8f0] placeholder-[#94a3b8]" inputmode="search" autocomplete="off" />
           <!-- suggestions -->
           <div x-ref="suggest" x-show="showSuggest && suggestions.length" @pointerdown.prevent class="absolute z-50 mt-1 w-full bg-[#1a1f2e] border border-[#2d3748] rounded-xl shadow-lg max-h-72 overflow-auto" role="listbox">
             <template x-for="(s, i) in suggestions" :key="s.key">
@@ -202,15 +202,16 @@
             </template>
           </div>
         </div>
-        <div class="grid grid-cols-1 gap-3">
-          <label class="text-xs text-[#94a3b8]">Dataset
-            <select x-model="dataset" class="mt-1 w-full px-3 py-2 border border-[#2d3748] rounded-xl bg-[#1a1f2e] text-[#e2e8f0]">
-              <option value="">All datasets</option>
-              <template x-for="d in datasets" :key="d._key">
-                <option :value="d.id" x-text="`${d.id} (${d.vulnerabilities})`"></option>
-              </template>
-            </select>
-          </label>
+      </label>
+      <div class="grid grid-cols-1 gap-3">
+        <label class="text-xs text-[#94a3b8]">Dataset
+          <select x-model="dataset" class="mt-1 w-full px-3 py-2 border border-[#2d3748] rounded-xl bg-[#1a1f2e] text-[#e2e8f0]">
+            <option value="">All datasets</option>
+            <template x-for="d in datasets" :key="d._key">
+              <option :value="d.id" x-text="`${d.id} (${d.vulnerabilities})`"></option>
+            </template>
+          </select>
+        </label>
           <label class="text-xs text-[#94a3b8]">Severity
             <select x-model="severity" class="mt-1 w-full px-3 py-2 border border-[#2d3748] rounded-xl bg-[#1a1f2e] text-[#e2e8f0]">
               <option value="">All severities</option>
@@ -244,20 +245,21 @@
         <button class="ml-auto p-2 rounded-xl border border-[#2d3748] bg-[#1a1f2e]" @click="mobileFilters=false" aria-label="Close filters">✕</button>
       </header>
       <div class="p-3 space-y-3 overflow-auto">
-        <div class="relative" x-ref="searchWrap">
-          <label for="q-m" class="sr-only">Search</label>
-          <input id="q-m" x-ref="search" x-model="q" @input="onInput" @keydown.down.prevent="moveSel(1)" @keydown.up.prevent="moveSel(-1)" @keydown.enter.prevent="applySel()" @keydown.escape.prevent="hideSuggest()" placeholder="Search (component, purl, vull id, license)" class="w-full px-3 py-3 border border-[#2d3748] rounded-xl bg-[#1a1f2e] text-[#e2e8f0] placeholder-[#94a3b8]" inputmode="search" autocomplete="off" />
-          <!-- suggestions -->
-          <div x-ref="suggest" x-show="showSuggest && suggestions.length" @pointerdown.prevent class="absolute z-50 mt-1 w-full bg-[#1a1f2e] border border-[#2d3748] rounded-xl shadow-lg max-h-72 overflow-auto" role="listbox">
-            <template x-for="(s, i) in suggestions" :key="s.key">
-              <button type="button" @pointerdown.prevent @click="pick(s)" :class="['w-full text-left px-3 py-2 flex items-center gap-2', i===selIdx ? 'bg-[#2d3748]' : 'hover:bg-[#2d3748]']" :aria-selected="i===selIdx" role="option" style="min-height:44px">
-                <span class="text-[11px] px-1.5 py-0.5 rounded bg-[#2d3748]" x-text="s.group"></span>
-                <span class="truncate flex-1" x-text="s.label"></span>
-                <span class="text-xs text-[#94a3b8]" x-text="s.meta"></span>
-              </button>
-            </template>
+        <label class="text-xs text-[#94a3b8]">Search
+          <div class="relative mt-1" x-ref="searchWrap">
+            <input id="q-m" x-ref="search" x-model="q" @input="onInput" @keydown.down.prevent="moveSel(1)" @keydown.up.prevent="moveSel(-1)" @keydown.enter.prevent="applySel()" @keydown.escape.prevent="hideSuggest()" placeholder="Search (component, purl, vull id, license)" class="w-full px-3 py-2 border border-[#2d3748] rounded-xl bg-[#1a1f2e] text-[#e2e8f0] placeholder-[#94a3b8]" inputmode="search" autocomplete="off" />
+            <!-- suggestions -->
+            <div x-ref="suggest" x-show="showSuggest && suggestions.length" @pointerdown.prevent class="absolute z-50 mt-1 w-full bg-[#1a1f2e] border border-[#2d3748] rounded-xl shadow-lg max-h-72 overflow-auto" role="listbox">
+              <template x-for="(s, i) in suggestions" :key="s.key">
+                <button type="button" @pointerdown.prevent @click="pick(s)" :class="['w-full text-left px-3 py-2 flex items-center gap-2', i===selIdx ? 'bg-[#2d3748]' : 'hover:bg-[#2d3748]']" :aria-selected="i===selIdx" role="option" style="min-height:44px">
+                  <span class="text-[11px] px-1.5 py-0.5 rounded bg-[#2d3748]" x-text="s.group"></span>
+                  <span class="truncate flex-1" x-text="s.label"></span>
+                  <span class="text-xs text-[#94a3b8]" x-text="s.meta"></span>
+                </button>
+              </template>
+            </div>
           </div>
-        </div>
+        </label>
         <div class="grid grid-cols-1 gap-3">
           <label class="text-xs text-[#94a3b8]">Dataset
             <select x-model="dataset" class="mt-1 w-full px-3 py-2 border border-[#2d3748] rounded-xl bg-[#1a1f2e] text-[#e2e8f0]">
