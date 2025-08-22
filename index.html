@@ -152,13 +152,10 @@
 
       <label class="flex items-center gap-2 px-3 py-2 border rounded-xl">
         <span class="text-sm">CVSS ≥</span>
-        <input type="number" min="0" max="10" step="0.1" x-model.number="cvssMin" @input="applyFilters(true)" class="w-20 outline-none" aria-label="Minimum CVSS" />
+        <input type="number" min="0" max="10" step="0.1" x-model.number="cvssMin" @input="applyFilters(true)" class="min-w-[10rem] outline-none" aria-label="Minimum CVSS" />
       </label>
 
-      <label class="flex items-center gap-2 px-3 py-2 border rounded-xl">
-        <input type="checkbox" x-model="onlyDirect" @change="applyFilters(true)" aria-label="Only direct dependencies">
-        <span class="text-sm">Only direct</span>
-      </label>
+
 
       <div class="ml-auto flex items-center gap-2 text-sm">
         <label class="whitespace-nowrap">Sort:</label>
@@ -229,16 +226,9 @@
               <option value="none">No fix</option>
             </select>
           </label>
-          <div class="flex items-center gap-3">
-            <label class="flex items-center gap-2 px-3 py-2 border border-[#2d3748] rounded-xl flex-1 bg-[#1a1f2e]">
-              <span class="text-sm text-[#e2e8f0]">CVSS ≥</span>
-              <input type="number" min="0" max="10" step="0.1" x-model.number="cvssMin" class="w-20 outline-none bg-transparent text-[#e2e8f0] placeholder-[#94a3b8]" />
-            </label>
-            <label class="flex items-center gap-2 px-3 py-2 border border-[#2d3748] rounded-xl bg-[#1a1f2e]">
-              <input type="checkbox" x-model="onlyDirect" class="text-[#A1D6E2]">
-              <span class="text-sm text-[#e2e8f0]">Only direct</span>
-            </label>
-          </div>
+          <label class="text-xs text-[#94a3b8]">CVSS minimum
+            <input type="number" min="0" max="10" step="0.1" x-model.number="cvssMin" class="mt-1 w-full px-3 py-2 border border-[#2d3748] rounded-xl bg-[#1a1f2e] text-[#e2e8f0] placeholder-[#94a3b8]" />
+          </label>
           
         </div>
       </div>
@@ -292,16 +282,9 @@
               <option value="none">No fix</option>
             </select>
           </label>
-          <div class="flex items-center gap-3">
-            <label class="flex items-center gap-2 px-3 py-2 border border-[#2d3748] rounded-xl flex-1 bg-[#1a1f2e]">
-              <span class="text-sm text-[#e2e8f0]">CVSS ≥</span>
-              <input type="number" min="0" max="10" step="0.1" x-model.number="cvssMin" class="w-20 outline-none bg-transparent text-[#e2e8f0] placeholder-[#94a3b8]" />
-            </label>
-            <label class="flex items-center gap-2 px-3 py-2 border border-[#2d3748] rounded-xl bg-[#1a1f2e]">
-              <input type="checkbox" x-model="onlyDirect" class="text-[#A1D6E2]">
-              <span class="text-sm text-[#e2e8f0]">Only direct</span>
-            </label>
-          </div>
+          <label class="text-xs text-[#94a3b8]">CVSS minimum
+            <input type="number" min="0" max="10" step="0.1" x-model.number="cvssMin" class="mt-1 w-full px-3 py-2 border border-[#2d3748] rounded-xl bg-[#1a1f2e] text-[#e2e8f0] placeholder-[#94a3b8]" />
+          </label>
           
         </div>
       </div>
@@ -540,7 +523,6 @@
                     <svg aria-hidden="true" viewBox="0 0 24 24" width="12" height="12" class="text-[#94a3b8]"><path fill="currentColor" d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6V4zm2 0v16h8a2 2 0 0 0 2-2V8l-6-4h-4z"/></svg>
                     <span x-text="row.dataset"></span>
                   </span>
-                  <template x-if="row.direct"><span class="ml-1 text-[10px] px-1 py-0.5 bg-emerald-100 text-emerald-700 rounded">direct</span></template>
                 </td>
                 <td class="px-4 py-2" :data-label="'Links'">
                   <template x-for="(u,i) in (row.urls || [])" :key="row._key+'-url-'+i">
@@ -591,7 +573,6 @@
         severity: "",
         fix: "",
         cvssMin: 0,
-        onlyDirect: false,
         mobileFilters: false,
         lastAction: "apply", // Track last action: "apply" or "reset"
         // severity dropdown (dynamic)
@@ -810,10 +791,8 @@
         updateSeverityOptions(){
           const q = this.q.trim().toLowerCase();
           const ds = this.dataset, fix = this.fix, cv = Number(this.cvssMin)||0;
-          const only = this.onlyDirect;
           const base = this.items.filter(r => {
             if (ds && r.dataset !== ds) return false;
-            if (only && !r.direct) return false;
             if (cv && (r.cvss ?? -1) < cv) return false;
             if (fix === 'has' && !(r.fixedVersions||[]).length) return false;
             if (fix === 'none' && (r.fixedVersions||[]).length) return false;
@@ -877,7 +856,6 @@
           this.filtered = this.items.filter(r => {
             if (ds && r.dataset !== ds) return false;
             if (sev && (r.severity||"").toUpperCase() !== sev) return false;
-            if (this.onlyDirect && !r.direct) return false;
             if (cv && (r.cvss ?? -1) < cv) return false;
             if (fix === "has" && !(r.fixedVersions || []).length) return false;
             if (fix === "none" && (r.fixedVersions || []).length) return false;
@@ -957,7 +935,6 @@
           if (this.severity) bits.push(`severity=${this.severity}`);
           if (this.fix) bits.push(`fix=${this.fix}`);
           if (this.cvssMin) bits.push(`cvss≥${this.cvssMin}`);
-          if (this.onlyDirect) bits.push('onlyDirect');
           if (this.q) bits.push(`q="${this.q}"`);
           return bits.length ? `Active: ${bits.join(' · ')}` : 'No active filters';
         },
@@ -966,7 +943,7 @@
         exportCSV(){
           const rows = this.filtered;
           if (!rows.length) { alert("No rows to export."); return; }
-          const header = ["severity","cvss","component","version","purl","licenses","id","dataset","links","direct"];
+          const header = ["severity","cvss","component","version","purl","licenses","id","dataset","links"];
           const lines = [header.join(",")];
           for (const r of rows) {
             const csv = [
@@ -978,8 +955,7 @@
               (r.licenses||[]).join("|"),
               r.id ?? "",
               r.dataset ?? "",
-              (r.urls||[]).join("|"),
-              r.direct ? "yes" : "no"
+              (r.urls||[]).join("|")
             ].map(x => `"${String(x).replace(/"/g,'""')}"`).join(",");
             lines.push(csv);
           }
@@ -1002,7 +978,6 @@
             cvss: String(this.cvssMin || 0),
             dir: this.sortDir,
             key: this.sortKey,
-            dirc: this.onlyDirect ? "1" : "0",
             p: String(this.page)
           }).toString();
           location.hash = h;
@@ -1016,7 +991,6 @@
           this.cvssMin = Number(s.get("cvss") || this.cvssMin || 0);
           this.sortDir = s.get("dir") || this.sortDir;
           this.sortKey = s.get("key") || this.sortKey;
-          this.onlyDirect = s.get("dirc")==="1" ? true : this.onlyDirect;
           this.page = Number(s.get("p") || this.page || 0);
         },
 
@@ -1030,7 +1004,6 @@
           this.severity = "";
           this.fix = "";
           this.cvssMin = 0;
-          this.onlyDirect = false;
           this.sortKey = "severityRank";
           this.sortDir = "desc";
           this.page = 0;
