@@ -89,7 +89,7 @@
     <!-- Filters (header inline) now hidden on desktop in favor of left sidebar; mobile drawer remains -->
     <div class="max-w-7xl mx-auto px-3 sm:px-4 pb-2 sm:pb-3 hidden">
       <!-- Search with typeahead -->
-      <div class="relative w-full" x-ref="searchWrap">
+      <div class="relative w-full sm:w-80" x-ref="searchWrap">
         <label for="q" class="sr-only">Search components, purls, CVEs, or licenses</label>
         <input
           id="q"
@@ -152,10 +152,13 @@
 
       <label class="flex items-center gap-2 px-3 py-2 border rounded-xl">
         <span class="text-sm">CVSS ≥</span>
-        <input type="number" min="0" max="10" step="0.1" x-model.number="cvssMin" @input="applyFilters(true)" class="w-32 outline-none" aria-label="Minimum CVSS" />
+        <input type="number" min="0" max="10" step="0.1" x-model.number="cvssMin" @input="applyFilters(true)" class="w-20 outline-none" aria-label="Minimum CVSS" />
       </label>
 
-
+      <label class="flex items-center gap-2 px-3 py-2 border rounded-xl">
+        <input type="checkbox" x-model="onlyDirect" @change="applyFilters(true)" aria-label="Only direct dependencies">
+        <span class="text-sm">Only direct</span>
+      </label>
 
       <div class="ml-auto flex items-center gap-2 text-sm">
         <label class="whitespace-nowrap">Sort:</label>
@@ -188,9 +191,9 @@
         <button class="ml-auto p-2 rounded-xl border border-[#2d3748] bg-[#1a1f2e]" @click="mobileFilters=false" aria-label="Close filters">✕</button>
       </header>
       <div class="p-3 space-y-3 overflow-auto">
-        <label class="text-xs text-[#94a3b8]">Search
-          <input id="q-d" x-ref="search" x-model="q" @input="onInput" @keydown.down.prevent="moveSel(1)" @keydown.up.prevent="moveSel(-1)" @keydown.enter.prevent="applySel()" @keydown.escape.prevent="hideSuggest()" placeholder="Search (component, purl, vuln id, license)" class="mt-1 w-full px-3 py-2 border border-[#2d3748] rounded-xl bg-[#1a1f2e] text-[#e2e8f0] placeholder-[#94a3b8]" inputmode="search" autocomplete="off" />
-        </label>
+        <div class="relative" x-ref="searchWrap">
+          <label for="q-d" class="sr-only">Search</label>
+          <input id="q-d" x-ref="search" x-model="q" @input="onInput" @keydown.down.prevent="moveSel(1)" @keydown.up.prevent="moveSel(-1)" @keydown.enter.prevent="applySel()" @keydown.escape.prevent="hideSuggest()" placeholder="Search (component, purl, vuln id, license)" class="w-full px-3 py-3 border border-[#2d3748] rounded-xl bg-[#1a1f2e] text-[#e2e8f0] placeholder-[#94a3b8]" inputmode="search" autocomplete="off" />
           <!-- suggestions -->
           <div x-ref="suggest" x-show="showSuggest && suggestions.length" @pointerdown.prevent class="absolute z-50 mt-1 w-full bg-[#1a1f2e] border border-[#2d3748] rounded-xl shadow-lg max-h-72 overflow-auto" role="listbox">
             <template x-for="(s, i) in suggestions" :key="s.key">
@@ -226,9 +229,16 @@
               <option value="none">No fix</option>
             </select>
           </label>
-          <label class="text-xs text-[#94a3b8]">CVSS ≥
-            <input type="number" min="0" max="10" step="0.1" x-model.number="cvssMin" class="mt-1 w-full px-3 py-2 border border-[#2d3748] rounded-xl bg-[#1a1f2e] text-[#e2e8f0] outline-none" />
-          </label>
+          <div class="flex items-center gap-3">
+            <label class="flex items-center gap-2 px-3 py-2 border border-[#2d3748] rounded-xl flex-1 bg-[#1a1f2e]">
+              <span class="text-sm text-[#e2e8f0]">CVSS ≥</span>
+              <input type="number" min="0" max="10" step="0.1" x-model.number="cvssMin" class="w-20 outline-none bg-transparent text-[#e2e8f0] placeholder-[#94a3b8]" />
+            </label>
+            <label class="flex items-center gap-2 px-3 py-2 border border-[#2d3748] rounded-xl bg-[#1a1f2e]">
+              <input type="checkbox" x-model="onlyDirect" class="text-[#A1D6E2]">
+              <span class="text-sm text-[#e2e8f0]">Only direct</span>
+            </label>
+          </div>
           
         </div>
       </div>
@@ -244,9 +254,9 @@
         <button class="ml-auto p-2 rounded-xl border border-[#2d3748] bg-[#1a1f2e]" @click="mobileFilters=false" aria-label="Close filters">✕</button>
       </header>
       <div class="p-3 space-y-3 overflow-auto">
-        <label class="text-xs text-[#94a3b8]">Search
-          <input id="q-m" x-ref="search" x-model="q" @input="onInput" @keydown.down.prevent="moveSel(1)" @keydown.up.prevent="moveSel(-1)" @keydown.enter.prevent="applySel()" @keydown.escape.prevent="hideSuggest()" placeholder="Search (component, purl, vuln id, license)" class="mt-1 w-full px-3 py-2 border border-[#2d3748] rounded-xl bg-[#1a1f2e] text-[#e2e8f0] placeholder-[#94a3b8]" inputmode="search" autocomplete="off" />
-        </label>
+        <div class="relative" x-ref="searchWrap">
+          <label for="q-m" class="sr-only">Search</label>
+          <input id="q-m" x-ref="search" x-model="q" @input="onInput" @keydown.down.prevent="moveSel(1)" @keydown.up.prevent="moveSel(-1)" @keydown.enter.prevent="applySel()" @keydown.escape.prevent="hideSuggest()" placeholder="Search (component, purl, vull id, license)" class="w-full px-3 py-3 border border-[#2d3748] rounded-xl bg-[#1a1f2e] text-[#e2e8f0] placeholder-[#94a3b8]" inputmode="search" autocomplete="off" />
           <!-- suggestions -->
           <div x-ref="suggest" x-show="showSuggest && suggestions.length" @pointerdown.prevent class="absolute z-50 mt-1 w-full bg-[#1a1f2e] border border-[#2d3748] rounded-xl shadow-lg max-h-72 overflow-auto" role="listbox">
             <template x-for="(s, i) in suggestions" :key="s.key">
@@ -282,9 +292,16 @@
               <option value="none">No fix</option>
             </select>
           </label>
-          <label class="text-xs text-[#94a3b8]">CVSS ≥
-            <input type="number" min="0" max="10" step="0.1" x-model.number="cvssMin" class="mt-1 w-full px-3 py-2 border border-[#2d3748] rounded-xl bg-[#1a1f2e] text-[#e2e8f0] outline-none" />
-          </label>
+          <div class="flex items-center gap-3">
+            <label class="flex items-center gap-2 px-3 py-2 border border-[#2d3748] rounded-xl flex-1 bg-[#1a1f2e]">
+              <span class="text-sm text-[#e2e8f0]">CVSS ≥</span>
+              <input type="number" min="0" max="10" step="0.1" x-model.number="cvssMin" class="w-20 outline-none bg-transparent text-[#e2e8f0] placeholder-[#94a3b8]" />
+            </label>
+            <label class="flex items-center gap-2 px-3 py-2 border border-[#2d3748] rounded-xl bg-[#1a1f2e]">
+              <input type="checkbox" x-model="onlyDirect" class="text-[#A1D6E2]">
+              <span class="text-sm text-[#e2e8f0]">Only direct</span>
+            </label>
+          </div>
           
         </div>
       </div>
@@ -487,6 +504,7 @@
               <th class="px-4 py-3">License</th>
               <th class="px-4 py-3">Vuln ID</th>
               <th class="px-4 py-3 w-40">Dataset</th>
+              <th class="px-4 py-3 w-40">Links</th>
             </tr>
           </thead>
           <tbody>
@@ -522,7 +540,12 @@
                     <svg aria-hidden="true" viewBox="0 0 24 24" width="12" height="12" class="text-[#94a3b8]"><path fill="currentColor" d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6V4zm2 0v16h8a2 2 0 0 0 2-2V8l-6-4h-4z"/></svg>
                     <span x-text="row.dataset"></span>
                   </span>
-                  <template x-if="row.direct"><span class="ml-1 text-xs px-1 py-0.5 bg-emerald-100 text-emerald-700 rounded">direct</span></template>
+                  <template x-if="row.direct"><span class="ml-1 text-[10px] px-1 py-0.5 bg-emerald-100 text-emerald-700 rounded">direct</span></template>
+                </td>
+                <td class="px-4 py-2" :data-label="'Links'">
+                  <template x-for="(u,i) in (row.urls || [])" :key="row._key+'-url-'+i">
+                    <a class="text-blue-600 underline mr-2" :href="u" target="_blank" rel="noopener" x-text="`ref${i+1}`"></a>
+                  </template>
                 </td>
               </tr>
             </template>
