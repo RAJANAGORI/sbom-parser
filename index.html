@@ -16,6 +16,18 @@
     .bar { @apply h-2 w-full bg-gray-200 dark:bg-neutral-800 rounded; }
     .bar-fill { @apply h-2 rounded; background: linear-gradient(90deg, #ef4444, #f59e0b, #10b981); }
     [x-cloak]{ display:none !important; }
+    /* Palette and typography */
+    :root{
+      --primary:#7395AE; /* Slate blue */
+      --accent:#A1D6E2;  /* Soft blue */
+      --bg:#F0F4F8;      /* Very light gray */
+    }
+    html, body { background-color: var(--bg); }
+    body{ font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji"; }
+    code, pre, kbd, samp { font-family: 'Source Code Pro', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    a{ color: var(--primary); }
+    .btn-primary{ background: var(--primary); color: white; }
+    .btn-accent{ background: var(--accent); color: #0f172a; }
     /* Respect users who prefer less motion */
     @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 
@@ -31,6 +43,9 @@
       .btn { @apply h-11 px-4 rounded-xl border text-sm; }
     }
   </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Code+Pro:wght@400;600&display=swap" rel="stylesheet">
 </head>
 <body class="h-full text-gray-900 dark:text-gray-100">
   <!-- Top bar -->
@@ -63,8 +78,8 @@
       </div>
     </div>
 
-    <!-- Filters (inline on desktop, drawer on mobile) -->
-    <div class="max-w-7xl mx-auto px-3 sm:px-4 pb-2 sm:pb-3 hidden sm:flex items-center gap-2 flex-wrap">
+    <!-- Filters (header inline) now hidden on desktop in favor of left sidebar; mobile drawer remains -->
+    <div class="max-w-7xl mx-auto px-3 sm:px-4 pb-2 sm:pb-3 hidden">
       <!-- Search with typeahead -->
       <div class="relative w-full sm:w-80" x-ref="searchWrap">
         <label for="q" class="sr-only">Search components, purls, CVEs, or licenses</label>
@@ -226,6 +241,84 @@
   </div>
 
   <main class="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6" x-cloak>
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+      <!-- Left sidebar filters (desktop) -->
+      <aside class="hidden lg:block lg:col-span-3">
+        <div class="card sticky top-24 space-y-3" aria-label="Filters sidebar">
+          <div class="relative" x-ref="searchWrap">
+            <label for="q-side" class="text-xs text-gray-600">Search</label>
+            <input
+              id="q-side"
+              x-ref="search"
+              x-model="q"
+              @input="onInput"
+              @keydown.down.prevent="moveSel(1)"
+              @keydown.up.prevent="moveSel(-1)"
+              @keydown.enter.prevent="applySel()"
+              @keydown.escape.prevent="hideSuggest()"
+              placeholder="component, purl, vuln id, license"
+              class="mt-1 w-full px-3 py-2 border rounded-xl focus:outline-none focus:ring"
+              inputmode="search" autocomplete="off"
+            />
+          </div>
+
+          <label class="text-xs text-gray-600">Dataset
+            <select x-model="dataset" @change="applyFilters(true)" class="mt-1 w-full px-3 py-2 border rounded-xl">
+              <option value="">All datasets</option>
+              <template x-for="d in datasets" :key="d._key">
+                <option :value="d.id" x-text="`${d.id} (${d.vulnerabilities})`"></option>
+              </template>
+            </select>
+          </label>
+
+          <label class="text-xs text-gray-600">Severity
+            <select x-model="severity" @change="applyFilters(true)" class="mt-1 w-full px-3 py-2 border rounded-xl">
+              <option value="">All severities</option>
+              <template x-for="s in sevOpts" :key="s">
+                <option :value="s" x-text="s"></option>
+              </template>
+            </select>
+          </label>
+
+          <label class="text-xs text-gray-600">Fix status
+            <select x-model="fix" @change="applyFilters(true)" class="mt-1 w-full px-3 py-2 border rounded-xl">
+              <option value="">Has fix?</option>
+              <option value="has">Has fix</option>
+              <option value="none">No fix</option>
+            </select>
+          </label>
+
+          <div class="flex items-center gap-3">
+            <label class="flex items-center gap-2 px-3 py-2 border rounded-xl flex-1">
+              <span class="text-sm">CVSS ≥</span>
+              <input type="number" min="0" max="10" step="0.1" x-model.number="cvssMin" @input="applyFilters(true)" class="w-20 outline-none" />
+            </label>
+            <label class="flex items-center gap-2 px-3 py-2 border rounded-xl">
+              <input type="checkbox" x-model="onlyDirect" @change="applyFilters(true)">
+              <span class="text-sm">Only direct</span>
+            </label>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <label class="text-xs text-gray-600 flex-1">Sort by
+              <select x-model="sortKey" @change="applyFilters()" class="mt-1 w-full px-3 py-2 border rounded-xl">
+                <option value="severityRank">Severity</option>
+                <option value="cvss">CVSS</option>
+                <option value="component">Component</option>
+                <option value="dataset">Dataset</option>
+              </select>
+            </label>
+            <button class="mt-6 px-3 py-2 border rounded-xl" @click="sortDir = sortDir==='desc'?'asc':'desc'; applyFilters()" :aria-label="'Sort ' + (sortDir==='desc'?'descending':'ascending')" x-text="sortDir==='desc' ? '↓' : '↑'"></button>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2 pt-2">
+            <button class="px-3 py-2 border rounded-xl btn-accent" @click="applyFilters(true)">Apply</button>
+            <button class="px-3 py-2 border rounded-xl" @click="resetFilters()">Reset</button>
+          </div>
+        </div>
+      </aside>
+
+      <div class="lg:col-span-9 space-y-6">
     <!-- Row 1: Totals (8/12) + Datasets (4/12) -->
     <section class="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4 mb-4 sm:mb-6" aria-live="polite">
       <!-- Left: totals + severities (6 equal tiles) -->
@@ -427,7 +520,10 @@
                 </td>
                 <td class="px-4 py-2" :data-label="'CVSS'" x-text="row.cvss ?? '-' "></td>
                 <td class="px-4 py-2" :data-label="'Component'">
-                  <div class="font-medium" x-text="row.component || '-' "></div>
+                  <div class="font-medium flex items-center gap-1">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" width="14" height="14" class="text-gray-400"><path fill="currentColor" d="M4 4h6l2 2h8v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/></svg>
+                    <span x-text="row.component || '-' "></span>
+                  </div>
                   <div class="text-xs text-gray-500 truncate max-w-[28rem]" x-text="row.purl"></div>
                 </td>
                 <td class="px-4 py-2" :data-label="'Version'" x-text="row.version || '-' "></td>
@@ -436,9 +532,19 @@
                     <span class="mr-1 px-1.5 py-0.5 bg-gray-100 dark:bg-neutral-800 rounded" x-text="l"></span>
                   </template>
                 </td>
-                <td class="px-4 py-2" :data-label="'Vuln ID'" x-text="row.id || '-' "></td>
+                <td class="px-4 py-2" :data-label="'Vuln ID'">
+                  <template x-if="row.id">
+                    <button class="underline text-[color:var(--primary)]" @click="applyTopCVE(row.id)" x-text="row.id"></button>
+                  </template>
+                  <template x-if="!row.id">
+                    <span>-</span>
+                  </template>
+                </td>
                 <td class="px-4 py-2" :data-label="'Dataset'">
-                  <span class="text-xs px-2 py-1 bg-gray-100 dark:bg-neutral-800 rounded" x-text="row.dataset"></span>
+                  <span class="text-xs px-2 py-1 bg-gray-100 dark:bg-neutral-800 rounded inline-flex items-center gap-1">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" width="12" height="12" class="text-gray-500"><path fill="currentColor" d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6V4zm2 0v16h8a2 2 0 0 0 2-2V8l-6-4h-4z"/></svg>
+                    <span x-text="row.dataset"></span>
+                  </span>
                   <template x-if="row.direct"><span class="ml-1 text-[10px] px-1 py-0.5 bg-emerald-100 text-emerald-700 rounded">direct</span></template>
                 </td>
                 <td class="px-4 py-2" :data-label="'Links'">
@@ -470,6 +576,8 @@
         </div>
       </div>
     </section>
+      </div>
+    </div>
   </main>
 
   <script>
