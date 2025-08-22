@@ -188,9 +188,9 @@
         <button class="ml-auto p-2 rounded-xl border border-[#2d3748] bg-[#1a1f2e]" @click="mobileFilters=false" aria-label="Close filters">✕</button>
       </header>
       <div class="p-3 space-y-3 overflow-auto">
-        <div class="relative" x-ref="searchWrap">
-          <label for="q-d" class="sr-only">Search</label>
-          <input id="q-d" x-ref="search" x-model="q" @input="onInput" @keydown.down.prevent="moveSel(1)" @keydown.up.prevent="moveSel(-1)" @keydown.enter.prevent="applySel()" @keydown.escape.prevent="hideSuggest()" placeholder="Search (component, purl, vuln id, license)" class="w-full px-3 py-3 border border-[#2d3748] rounded-xl bg-[#1a1f2e] text-[#e2e8f0] placeholder-[#94a3b8]" inputmode="search" autocomplete="off" />
+        <label class="text-xs text-[#94a3b8]">Search
+          <input id="q-d" x-ref="search" x-model="q" @input="onInput" @keydown.down.prevent="moveSel(1)" @keydown.up.prevent="moveSel(-1)" @keydown.enter.prevent="applySel()" @keydown.escape.prevent="hideSuggest()" placeholder="Search (component, purl, vuln id, license)" class="mt-1 w-full px-3 py-2 border border-[#2d3748] rounded-xl bg-[#1a1f2e] text-[#e2e8f0] placeholder-[#94a3b8]" inputmode="search" autocomplete="off" />
+        </label>
           <!-- suggestions -->
           <div x-ref="suggest" x-show="showSuggest && suggestions.length" @pointerdown.prevent class="absolute z-50 mt-1 w-full bg-[#1a1f2e] border border-[#2d3748] rounded-xl shadow-lg max-h-72 overflow-auto" role="listbox">
             <template x-for="(s, i) in suggestions" :key="s.key">
@@ -244,9 +244,9 @@
         <button class="ml-auto p-2 rounded-xl border border-[#2d3748] bg-[#1a1f2e]" @click="mobileFilters=false" aria-label="Close filters">✕</button>
       </header>
       <div class="p-3 space-y-3 overflow-auto">
-        <div class="relative" x-ref="searchWrap">
-          <label for="q-m" class="sr-only">Search</label>
-          <input id="q-m" x-ref="search" x-model="q" @input="onInput" @keydown.down.prevent="moveSel(1)" @keydown.up.prevent="moveSel(-1)" @keydown.enter.prevent="applySel()" @keydown.escape.prevent="hideSuggest()" placeholder="Search (component, purl, vull id, license)" class="w-full px-3 py-3 border border-[#2d3748] rounded-xl bg-[#1a1f2e] text-[#e2e8f0] placeholder-[#94a3b8]" inputmode="search" autocomplete="off" />
+        <label class="text-xs text-[#94a3b8]">Search
+          <input id="q-m" x-ref="search" x-model="q" @input="onInput" @keydown.down.prevent="moveSel(1)" @keydown.up.prevent="moveSel(-1)" @keydown.enter.prevent="applySel()" @keydown.escape.prevent="hideSuggest()" placeholder="Search (component, purl, vuln id, license)" class="mt-1 w-full px-3 py-2 border border-[#2d3748] rounded-xl bg-[#1a1f2e] text-[#e2e8f0] placeholder-[#94a3b8]" inputmode="search" autocomplete="off" />
+        </label>
           <!-- suggestions -->
           <div x-ref="suggest" x-show="showSuggest && suggestions.length" @pointerdown.prevent class="absolute z-50 mt-1 w-full bg-[#1a1f2e] border border-[#2d3748] rounded-xl shadow-lg max-h-72 overflow-auto" role="listbox">
             <template x-for="(s, i) in suggestions" :key="s.key">
