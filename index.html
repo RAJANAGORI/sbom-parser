@@ -243,8 +243,8 @@
         </div>
       </div>
       <div class="p-3 grid grid-cols-2 gap-2 border-t border-[#2d3748]">
-        <button class="btn bg-[#7395AE] text-white border-[#7395AE]" @click="applyFilters(true); mobileFilters=false">Apply</button>
-        <button class="btn bg-[#1a1f2e] border-[#2d3748] text-[#e2e8f0]" @click="resetFilters(); mobileFilters=false">Reset</button>
+        <button class="btn" :class="lastAction === 'apply' ? 'bg-[#7395AE] text-white border-[#7395AE]' : 'bg-[#1a1f2e] border-[#2d3748] text-[#e2e8f0]'" @click="applyFilters(true); mobileFilters=false; lastAction='apply'">Apply</button>
+        <button class="btn" :class="lastAction === 'reset' ? 'bg-[#7395AE] text-white border-[#7395AE]' : 'bg-[#1a1f2e] border-[#2d3748] text-[#e2e8f0]'" @click="resetFilters(); mobileFilters=false; lastAction='reset'">Reset</button>
       </div>
     </section>
     <!-- Mobile bottom sheet -->
@@ -306,8 +306,8 @@
         </div>
       </div>
       <div class="sticky-actions p-3 grid grid-cols-2 gap-2">
-        <button class="btn bg-[#7395AE] text-white border-[#7395AE]" @click="applyFilters(true); mobileFilters=false">Apply</button>
-        <button class="btn bg-[#1a1f2e] border-[#2d3748] text-[#e2e8f0]" @click="resetFilters(); mobileFilters=false">Reset</button>
+        <button class="btn" :class="lastAction === 'apply' ? 'bg-[#7395AE] text-white border-[#7395AE]' : 'bg-[#1a1f2e] border-[#2d3748] text-[#e2e8f0]'" @click="applyFilters(true); mobileFilters=false; lastAction='apply'">Apply</button>
+        <button class="btn" :class="lastAction === 'reset' ? 'bg-[#7395AE] text-white border-[#7395AE]' : 'bg-[#1a1f2e] border-[#2d3748] text-[#e2e8f0]'" @click="resetFilters(); mobileFilters=false; lastAction='reset'">Reset</button>
       </div>
     </section>
   </div>
@@ -593,6 +593,7 @@
         cvssMin: 0,
         onlyDirect: false,
         mobileFilters: false,
+        lastAction: "apply", // Track last action: "apply" or "reset"
         // severity dropdown (dynamic)
         sevBaseOrder: ['CRITICAL','HIGH','MEDIUM','LOW','INFO','UNKNOWN'],
         sevOpts: ['CRITICAL','HIGH','MEDIUM','LOW'],
@@ -1033,6 +1034,7 @@
           this.sortKey = "severityRank";
           this.sortDir = "desc";
           this.page = 0;
+          this.lastAction = "reset";
           this.updateSeverityOptions();
           this.applyFilters(true);
         },
