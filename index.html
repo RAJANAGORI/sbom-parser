@@ -187,9 +187,19 @@
         <button class="ml-auto p-2 rounded-xl border" @click="mobileFilters=false" aria-label="Close filters">✕</button>
       </header>
       <div class="p-3 space-y-3 overflow-auto">
-        <div class="relative">
+        <div class="relative" x-ref="searchWrap">
           <label for="q-d" class="sr-only">Search</label>
-          <input id="q-d" x-model="q" @input="onInput" placeholder="Search (component, purl, vuln id, license)" class="w-full px-3 py-3 border rounded-xl" inputmode="search" autocomplete="off" />
+          <input id="q-d" x-ref="search" x-model="q" @input="onInput" @keydown.down.prevent="moveSel(1)" @keydown.up.prevent="moveSel(-1)" @keydown.enter.prevent="applySel()" @keydown.escape.prevent="hideSuggest()" placeholder="Search (component, purl, vuln id, license)" class="w-full px-3 py-3 border rounded-xl" inputmode="search" autocomplete="off" />
+          <!-- suggestions -->
+          <div x-ref="suggest" x-show="showSuggest && suggestions.length" @pointerdown.prevent class="absolute z-50 mt-1 w-full bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-xl shadow-lg max-h-72 overflow-auto" role="listbox">
+            <template x-for="(s, i) in suggestions" :key="s.key">
+              <button type="button" @pointerdown.prevent @click="pick(s)" :class="['w-full text-left px-3 py-2 flex items-center gap-2', i===selIdx ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-gray-50 dark:hover:bg-neutral-800']" :aria-selected="i===selIdx" role="option" style="min-height:44px">
+                <span class="text-[11px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-neutral-800" x-text="s.group"></span>
+                <span class="truncate flex-1" x-text="s.label"></span>
+                <span class="text-xs text-gray-400" x-text="s.meta"></span>
+              </button>
+            </template>
+          </div>
         </div>
         <div class="grid grid-cols-1 gap-3">
           <label class="text-xs text-gray-600">Dataset
@@ -225,17 +235,7 @@
               <span class="text-sm">Only direct</span>
             </label>
           </div>
-          <div class="flex items-center gap-2">
-            <label class="text-xs text-gray-600">Sort by
-              <select x-model="sortKey" class="mt-1 w-full px-3 py-2 border rounded-xl">
-                <option value="severityRank">Severity</option>
-                <option value="cvss">CVSS</option>
-                <option value="component">Component</option>
-                <option value="dataset">Dataset</option>
-              </select>
-            </label>
-            <button class="mt-6 px-3 py-2 border rounded-xl" @click="sortDir = sortDir==='desc'?'asc':'desc'">Sort <span x-text="sortDir==='desc'?'↓':'↑'"></span></button>
-          </div>
+          
         </div>
       </div>
       <div class="p-3 grid grid-cols-2 gap-2 border-t border-gray-200 dark:border-neutral-800">
@@ -250,9 +250,19 @@
         <button class="ml-auto p-2 rounded-xl border" @click="mobileFilters=false" aria-label="Close filters">✕</button>
       </header>
       <div class="p-3 space-y-3 overflow-auto">
-        <div class="relative">
+        <div class="relative" x-ref="searchWrap">
           <label for="q-m" class="sr-only">Search</label>
-          <input id="q-m" x-model="q" @input="onInput" placeholder="Search (component, purl, vuln id, license)" class="w-full px-3 py-3 border rounded-xl" inputmode="search" autocomplete="off" />
+          <input id="q-m" x-ref="search" x-model="q" @input="onInput" @keydown.down.prevent="moveSel(1)" @keydown.up.prevent="moveSel(-1)" @keydown.enter.prevent="applySel()" @keydown.escape.prevent="hideSuggest()" placeholder="Search (component, purl, vuln id, license)" class="w-full px-3 py-3 border rounded-xl" inputmode="search" autocomplete="off" />
+          <!-- suggestions -->
+          <div x-ref="suggest" x-show="showSuggest && suggestions.length" @pointerdown.prevent class="absolute z-50 mt-1 w-full bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-xl shadow-lg max-h-72 overflow-auto" role="listbox">
+            <template x-for="(s, i) in suggestions" :key="s.key">
+              <button type="button" @pointerdown.prevent @click="pick(s)" :class="['w-full text-left px-3 py-2 flex items-center gap-2', i===selIdx ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-gray-50 dark:hover:bg-neutral-800']" :aria-selected="i===selIdx" role="option" style="min-height:44px">
+                <span class="text-[11px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-neutral-800" x-text="s.group"></span>
+                <span class="truncate flex-1" x-text="s.label"></span>
+                <span class="text-xs text-gray-400" x-text="s.meta"></span>
+              </button>
+            </template>
+          </div>
         </div>
         <div class="grid grid-cols-1 gap-3">
           <label class="text-xs text-gray-600">Dataset
@@ -288,17 +298,7 @@
               <span class="text-sm">Only direct</span>
             </label>
           </div>
-          <div class="flex items-center gap-2">
-            <label class="text-xs text-gray-600">Sort by
-              <select x-model="sortKey" class="mt-1 w-full px-3 py-2 border rounded-xl">
-                <option value="severityRank">Severity</option>
-                <option value="cvss">CVSS</option>
-                <option value="component">Component</option>
-                <option value="dataset">Dataset</option>
-              </select>
-            </label>
-            <button class="mt-6 px-3 py-2 border rounded-xl" @click="sortDir = sortDir==='desc'?'asc':'desc'">Sort <span x-text="sortDir==='desc'?'↓':'↑'"></span></button>
-          </div>
+          
         </div>
       </div>
       <div class="sticky-actions p-3 grid grid-cols-2 gap-2">
