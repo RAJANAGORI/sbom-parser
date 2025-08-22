@@ -191,6 +191,58 @@
         grid-template-columns: 1fr;
       }
     }
+
+    /* Compact layout for smaller screens */
+    .compact-layout .grid {
+      gap: 0.75rem;
+    }
+
+    .compact-layout .card {
+      padding: 0.75rem;
+    }
+
+    /* Responsive grid adjustments */
+    @media (max-width: 1400px) {
+      .xl\:grid-cols-12 {
+        grid-template-columns: repeat(12, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 1200px) {
+      .xl\:col-span-8 {
+        grid-column: span 12;
+      }
+      .xl\:col-span-4 {
+        grid-column: span 12;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .xl\:col-span-8,
+      .xl\:col-span-4 {
+        grid-column: span 1;
+      }
+    }
+
+    /* Fluid container behavior */
+    .fluid-container {
+      width: 100%;
+      max-width: none;
+      margin: 0;
+    }
+
+    /* Sidebar-aware responsive behavior */
+    @media (min-width: 640px) {
+      .sidebar-open {
+        margin-left: 28rem;
+      }
+    }
+
+    @media (min-width: 1280px) {
+      .sidebar-open {
+        margin-left: 32rem;
+      }
+    }
   </style>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -201,8 +253,9 @@
 
 <body class="h-full text-gray-100 bg-[#0a0e14]">
   <!-- Top bar -->
-  <header class="sticky top-0 z-40 bg-[#1a1f2e]/90 backdrop-blur border-b border-[#2d3748]">
-    <div class="max-w-7xl mx-auto px-3 sm:px-4 py-2 sm:py-3 flex items-center gap-2 sm:gap-3">
+  <header class="sticky top-0 z-40 bg-[#1a1f2e]/90 backdrop-blur border-b border-[#2d3748] transition-all duration-300 ease-in-out"
+    :class="mobileFilters ? 'sm:ml-[28rem] xl:ml-[32rem]' : ''">
+    <div class="px-3 sm:px-4 py-2 sm:py-3 flex items-center gap-2 sm:gap-3">
       <button class="sm:hidden p-2 rounded-xl border border-[#2d3748]" @click="toggleSidebar()"
         aria-label="Toggle filters">
         <!-- funnel icon -->
@@ -488,8 +541,8 @@
     </section>
   </div>
 
-  <main class="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6 transition-all duration-300 ease-in-out" x-cloak
-    <div class="space-y-6" :class="mobileFilters ? 'sm:ml-[28rem] xl:ml-[32rem]' : ''">
+  <main class="px-3 sm:px-4 py-4 sm:py-6 transition-all duration-300 ease-in-out" x-cloak
+    <div class="space-y-6 w-full" :class="mobileFilters ? 'sm:ml-0 xl:ml-0' : ''">
       <!-- Row 1: Totals (8/12) + Datasets (4/12) -->
       <section class="grid grid-cols-1 xl:grid-cols-12 gap-3 sm:gap-4 mb-4 sm:mb-6" aria-live="polite">
         <!-- Left: totals + severities (6 equal tiles) -->
@@ -539,7 +592,7 @@
       <!-- Row 2: Left analytics (8/12) + Right Top CVEs (4/12) -->
       <section class="grid grid-cols-1 xl:grid-cols-12 gap-3 sm:gap-4 mb-4 sm:mb-6">
         <!-- Left analytics grid -->
-        <div class="xl:col-span-8 grid gap-4 items-stretch [grid-template-columns:repeat(auto-fit,minmax(160px,1fr))]">
+        <div class="xl:col-span-8 grid gap-4 items-stretch [grid-template-columns:repeat(auto-fit,minmax(140px,1fr))]">
           <!-- Fix availability -->
           <div class="card h-full flex items-start gap-3" x-show="fixRateFiltered > 0">
             <div class="shrink-0">
@@ -703,7 +756,7 @@
         <div class="mb-2 text-sm text-[#94a3b8]">
           <span x-text="`Showing ${filtered.length} of ${items.length} vulnerabilities`"></span>
         </div>
-        <div class="overflow-x-auto bg-[#1a1f2e] border border-[#2d3748] rounded-2xl shadow-sm">
+        <div class="overflow-x-auto bg-[#1a1f2e] border border-[#2d3748] rounded-2xl shadow-sm w-full">
           <table class="min-w-full text-sm responsive">
             <thead class="bg-[#2d3748]/60">
               <tr class="text-left">
@@ -1066,16 +1119,18 @@
             if (!insideWrap && !insidePanel) this.hideSuggest();
           }, { capture: true });
 
-                  // Handle window resize for responsive layout
-        this.handleResize = this.debounce(() => {
-          // Auto-close sidebar on very small screens
-          if (window.innerWidth < 640 && this.mobileFilters) {
-            this.mobileFilters = false;
-          }
-          // Adjust layout based on screen size
-          this.adjustLayoutForScreenSize();
-        }, 250);
-        window.addEventListener('resize', this.handleResize);
+                            // Handle window resize for responsive layout
+          this.handleResize = this.debounce(() => {
+            // Auto-close sidebar on very small screens
+            if (window.innerWidth < 640 && this.mobileFilters) {
+              this.mobileFilters = false;
+            }
+            // Adjust layout based on screen size
+            this.adjustLayoutForScreenSize();
+            // Force a reflow to ensure proper layout
+            document.body.offsetHeight;
+          }, 250);
+          window.addEventListener('resize', this.handleResize);
 
                   // Build non-critical charts after idle (snappier on low-end phones)
         const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 120));
@@ -1083,6 +1138,11 @@
         
         // Initial layout adjustment
         this.adjustLayoutForScreenSize();
+        
+        // Force initial layout calculation
+        setTimeout(() => {
+          this.adjustLayoutForScreenSize();
+        }, 100);
         },
 
         // utils
@@ -1146,6 +1206,11 @@
           
           // Adjust layout after filters are applied
           this.adjustLayoutForScreenSize();
+          
+          // Force a reflow to ensure proper layout
+          setTimeout(() => {
+            document.body.offsetHeight;
+          }, 50);
         },
 
         buildLicensesIfNeeded() { this.buildTopLicenses(); },
@@ -1264,7 +1329,11 @@
         toggleSidebar() {
           this.mobileFilters = !this.mobileFilters;
           // Adjust layout after sidebar toggle
-          setTimeout(() => this.adjustLayoutForScreenSize(), 100);
+          setTimeout(() => {
+            this.adjustLayoutForScreenSize();
+            // Force a reflow to ensure proper layout
+            document.body.offsetHeight;
+          }, 100);
         },
 
         // tiny helpers for view save/load
@@ -1289,6 +1358,12 @@
           const width = window.innerWidth;
           const isSidebarOpen = this.mobileFilters;
           
+          // Calculate available width for content
+          let availableWidth = width;
+          if (isSidebarOpen && width >= 640) {
+            availableWidth = width - (width >= 1280 ? 512 : 448); // 32rem or 28rem in pixels
+          }
+          
           // Adjust grid columns based on available space
           if (width < 640) {
             // Mobile: single column layout
@@ -1304,9 +1379,26 @@
             this.perPage = isSidebarOpen ? 45 : 60;
           }
           
+          // Adjust grid layout based on available space
+          this.updateGridLayout(availableWidth);
+          
           // Re-paginate if needed
           if (this.filtered.length > 0) {
             this.paginate();
+          }
+        },
+
+        // Update grid layout based on available width
+        updateGridLayout(availableWidth) {
+          // This function can be used to dynamically adjust grid layouts
+          // For now, we'll use CSS classes, but this could be extended
+          const mainContent = document.querySelector('main');
+          if (mainContent) {
+            if (availableWidth < 768) {
+              mainContent.classList.add('compact-layout');
+            } else {
+              mainContent.classList.remove('compact-layout');
+            }
           }
         }
       }
