@@ -88,47 +88,47 @@
 
     <!-- Filters (header inline) now hidden on desktop in favor of left sidebar; mobile drawer remains -->
     <div class="max-w-7xl mx-auto px-3 sm:px-4 pb-2 sm:pb-3 hidden">
-      <!-- Search with typeahead -->
-      <div class="relative min-w-[10rem]" x-ref="searchWrap">
-        <label for="q" class="sr-only">Search components, purls, CVEs, or licenses</label>
-        <input
-          id="q"
-          x-ref="search"
-          x-model="q"
-          @input="onInput"
-          @keydown.down.prevent="moveSel(1)"
-          @keydown.up.prevent="moveSel(-1)"
-          @keydown.enter.prevent="applySel()"
-          @keydown.escape.prevent="hideSuggest()"
-          placeholder="Search (component, purl, vuln id, license)"
-          class="w-full px-3 py-2 border rounded-xl focus:outline-none focus:ring"
-          aria-autocomplete="list" :aria-expanded="(showSuggest && suggestions.length) ? 'true' : 'false'" aria-haspopup="listbox" inputmode="search" autocomplete="off"
-        />
-        <!-- suggestions -->
-        <div
-          x-ref="suggest"
-          x-show="showSuggest && suggestions.length"
-          @pointerdown.prevent
-          class="absolute z-50 mt-1 w-full bg-[#1a1f2e] border border-[#2d3748] rounded-xl shadow-lg max-h-72 overflow-auto"
-          role="listbox"
-        >
-          <template x-for="(s, i) in suggestions" :key="s.key">
-            <button
-              type="button"
-              @pointerdown.prevent
-              @click="pick(s)"
-              :class="['w-full text-left px-3 py-2 flex items-center gap-2', i===selIdx ? 'bg-[#2d3748]' : 'hover:bg-[#2d3748]']"
-              :aria-selected="i===selIdx"
-              role="option"
-              style="min-height:44px"
-            >
-              <span class="text-[11px] px-1.5 py-0.5 rounded bg-[#2d3748]" x-text="s.group"></span>
-              <span class="truncate flex-1" x-text="s.label"></span>
-              <span class="text-xs text-[#94a3b8]" x-text="s.meta"></span>
-            </button>
-          </template>
+      <label class="text-sm">Search
+        <div class="relative mt-1" x-ref="searchWrap">
+          <input
+            id="q"
+            x-ref="search"
+            x-model="q"
+            @input="onInput"
+            @keydown.down.prevent="moveSel(1)"
+            @keydown.up.prevent="moveSel(-1)"
+            @keydown.enter.prevent="applySel()"
+            @keydown.escape.prevent="hideSuggest()"
+            placeholder="Search (component, purl, vuln id, license)"
+            class="w-full px-3 py-2 border rounded-xl focus:outline-none focus:ring"
+            aria-autocomplete="list" :aria-expanded="(showSuggest && suggestions.length) ? 'true' : 'false'" aria-haspopup="listbox" inputmode="search" autocomplete="off"
+          />
+          <!-- suggestions -->
+          <div
+            x-ref="suggest"
+            x-show="showSuggest && suggestions.length"
+            @pointerdown.prevent
+            class="absolute z-50 mt-1 w-full bg-[#1a1f2e] border border-[#2d3748] rounded-xl shadow-lg max-h-72 overflow-auto"
+            role="listbox"
+          >
+            <template x-for="(s, i) in suggestions" :key="s.key">
+              <button
+                type="button"
+                @pointerdown.prevent
+                @click="pick(s)"
+                :class="['w-full text-left px-3 py-2 flex items-center gap-2', i===selIdx ? 'bg-[#2d3748]' : 'hover:bg-[#2d3748]']"
+                :aria-selected="i===selIdx"
+                role="option"
+                style="min-height:44px"
+              >
+                <span class="text-[11px] px-1.5 py-0.5 rounded bg-[#2d3748]" x-text="s.group"></span>
+                <span class="truncate flex-1" x-text="s.label"></span>
+                <span class="text-xs text-[#94a3b8]" x-text="s.meta"></span>
+              </button>
+            </template>
+          </div>
         </div>
-      </div>
+      </label>
 
       <select x-model="dataset" @change="applyFilters(true)" class="px-3 py-2 border rounded-xl min-w-[10rem]" aria-label="Filter by dataset">
         <option value="">All datasets</option>
