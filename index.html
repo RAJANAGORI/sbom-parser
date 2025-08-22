@@ -243,6 +243,113 @@
         margin-left: 32rem;
       }
     }
+
+    /* Table responsiveness when sidebar is open */
+    .sidebar-open .overflow-x-auto {
+      max-width: none;
+      width: 100%;
+    }
+
+    /* Ensure table columns adjust properly */
+    .sidebar-open table {
+      table-layout: auto;
+    }
+
+    /* Responsive table behavior */
+    @media (max-width: 1200px) {
+      .sidebar-open table th,
+      .sidebar-open table td {
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .sidebar-open table th,
+      .sidebar-open table td {
+        padding-left: 0.5rem;
+        padding-right: 0.5rem;
+      }
+    }
+
+    /* Table column adjustments when sidebar is open */
+    .sidebar-open table th:nth-child(1),
+    .sidebar-open table td:nth-child(1) {
+      min-width: 80px;
+    }
+
+    .sidebar-open table th:nth-child(2),
+    .sidebar-open table td:nth-child(2) {
+      min-width: 60px;
+    }
+
+    .sidebar-open table th:nth-child(3),
+    .sidebar-open table td:nth-child(3) {
+      min-width: 120px;
+    }
+
+    .sidebar-open table th:nth-child(4),
+    .sidebar-open table td:nth-child(4) {
+      min-width: 80px;
+    }
+
+    .sidebar-open table th:nth-child(5),
+    .sidebar-open table td:nth-child(5) {
+      min-width: 100px;
+    }
+
+    .sidebar-open table th:nth-child(6),
+    .sidebar-open table td:nth-child(6) {
+      min-width: 120px;
+    }
+
+    .sidebar-open table th:nth-child(7),
+    .sidebar-open table td:nth-child(7) {
+      min-width: 100px;
+    }
+
+    /* Compact table layout */
+    .compact-table th,
+    .compact-table td {
+      padding-left: 0.5rem !important;
+      padding-right: 0.5rem !important;
+      font-size: 0.875rem;
+    }
+
+    .compact-table th:nth-child(1),
+    .compact-table td:nth-child(1) {
+      min-width: 70px;
+    }
+
+    .compact-table th:nth-child(2),
+    .compact-table td:nth-child(2) {
+      min-width: 50px;
+    }
+
+    .compact-table th:nth-child(3),
+    .compact-table td:nth-child(3) {
+      min-width: 100px;
+    }
+
+    .compact-table th:nth-child(4),
+    .compact-table td:nth-child(4) {
+      min-width: 70px;
+    }
+
+    .compact-table th:nth-child(5),
+    .compact-table td:nth-child(5) {
+      min-width: 80px;
+    }
+
+    .compact-table th:nth-child(6),
+    .compact-table td:nth-child(6) {
+      min-width: 100px;
+    }
+
+    .compact-table th:nth-child(7),
+    .compact-table td:nth-child(7) {
+      min-width: 80px;
+    }
   </style>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -542,6 +649,7 @@
   </div>
 
   <main class="px-3 sm:px-4 py-4 sm:py-6 transition-all duration-300 ease-in-out" x-cloak
+    :class="mobileFilters ? 'sm:ml-[28rem] xl:ml-[32rem] sidebar-open' : ''"
     <div class="space-y-6 w-full" :class="mobileFilters ? 'sm:ml-0 xl:ml-0' : ''">
       <!-- Row 1: Totals (8/12) + Datasets (4/12) -->
       <section class="grid grid-cols-1 xl:grid-cols-12 gap-3 sm:gap-4 mb-4 sm:mb-6" aria-live="polite">
@@ -751,12 +859,13 @@
         </div>
       </section>
 
-      <!-- Vulnerabilities table / cards -->
-      <section>
-        <div class="mb-2 text-sm text-[#94a3b8]">
-          <span x-text="`Showing ${filtered.length} of ${items.length} vulnerabilities`"></span>
-        </div>
-        <div class="overflow-x-auto bg-[#1a1f2e] border border-[#2d3748] rounded-2xl shadow-sm w-full">
+             <!-- Vulnerabilities table / cards -->
+       <section class="w-full">
+         <div class="mb-2 text-sm text-[#94a3b8]">
+           <span x-text="`Showing ${filtered.length} of ${items.length} vulnerabilities`"></span>
+         </div>
+         <div class="overflow-x-auto bg-[#1a1f2e] border border-[#2d3748] rounded-2xl shadow-sm w-full" 
+              :class="mobileFilters ? 'sm:max-w-none' : ''">
           <table class="min-w-full text-sm responsive">
             <thead class="bg-[#2d3748]/60">
               <tr class="text-left">
@@ -1399,6 +1508,21 @@
             } else {
               mainContent.classList.remove('compact-layout');
             }
+          }
+          
+          // Also adjust table layout
+          this.adjustTableLayout(availableWidth);
+        },
+
+        // Adjust table layout based on available width
+        adjustTableLayout(availableWidth) {
+          const table = document.querySelector('table');
+          if (!table) return;
+          
+          if (availableWidth < 768) {
+            table.classList.add('compact-table');
+          } else {
+            table.classList.remove('compact-table');
           }
         }
       }
