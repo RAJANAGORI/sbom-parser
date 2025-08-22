@@ -10,19 +10,21 @@
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
 
   <style>
+    /* Tailwind helpers via @apply for tiny custom classes */
     .card{ @apply bg-[#1a1f2e] border border-[#2d3748] rounded-2xl shadow-sm p-4; }
     .muted{ @apply text-xs text-[#94a3b8]; }
     .bar { @apply h-2 w-full bg-[#2d3748] rounded; }
     .bar-fill { @apply h-2 rounded; background: linear-gradient(90deg, #ef4444, #f59e0b, #10b981); }
     [x-cloak]{ display:none !important; }
+    /* Palette and typography - Dark theme with specified colors */
     :root{
-      --primary:#7395AE;
-      --accent:#A1D6E2;
-      --bg:#0a0e14;
-      --surface:#1a1f2e;
-      --border:#2d3748;
-      --text:#e2e8f0;
-      --text-muted:#94a3b8;
+      --primary:#7395AE; /* Slate blue - stability and command */
+      --accent:#A1D6E2;  /* Soft blue - interactive elements and highlights */
+      --bg:#0a0e14;      /* Dark background */
+      --surface:#1a1f2e; /* Dark surface */
+      --border:#2d3748;  /* Dark border */
+      --text:#e2e8f0;    /* Light text */
+      --text-muted:#94a3b8; /* Muted text */
     }
     html, body { background-color: var(--bg); }
     body{ font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji"; }
@@ -30,8 +32,10 @@
     a{ color: var(--primary); }
     .btn-primary{ background: var(--primary); color: white; }
     .btn-accent{ background: var(--accent); color: #0a0e14; }
+    /* Respect users who prefer less motion */
     @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 
+    /* Responsive table → cards on small screens (no JS required) */
     @media (max-width: 768px) {
       table.responsive { display: block; border: 0; }
       table.responsive thead { display: none; }
@@ -51,16 +55,18 @@
   <!-- Top bar -->
   <header class="sticky top-0 z-40 bg-[#1a1f2e]/90 backdrop-blur border-b border-[#2d3748]">
     <div class="max-w-7xl mx-auto px-3 sm:px-4 py-2 sm:py-3 flex items-center gap-2 sm:gap-3">
-      <button class="sm:hidden p-2 rounded-xl border border-[#2d3748]" @click="mobileFilters=true" aria-label="Open filters">
+              <button class="sm:hidden p-2 rounded-xl border border-[#2d3748]" @click="mobileFilters=true" aria-label="Open filters">
+        <!-- funnel icon -->
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 5h18M6 12h12M10 19h4"/></svg>
       </button>
-      <button class="hidden sm:inline-flex items-center gap-2 px-3 py-2 border border-[#2d3748] rounded-xl bg-[#1a1f2e] hover:bg-[#A1D6E2] hover:text-[#0a0e14] hover:border-[#A1D6E2]" @click="mobileFilters=true" aria-label="Open filters">
+              <button class="hidden sm:inline-flex items-center gap-2 px-3 py-2 border border-[#2d3748] rounded-xl bg-[#1a1f2e] hover:bg-[#A1D6E2] hover:text-[#0a0e14] hover:border-[#A1D6E2]" @click="mobileFilters=true" aria-label="Open filters">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 5h18M6 12h12M10 19h4"/></svg>
         Filters
       </button>
       <h1 class="text-base sm:text-xl font-semibold">SBOM Explorer</h1>
-      <span class="text-xs text-[#94a3b8] ml-2" x-text="metaText" aria-live="polite"></span>
+              <span class="text-xs text-[#94a3b8] ml-2" x-text="metaText" aria-live="polite"></span>
 
+      <!-- Actions: become compact icons on mobile -->
       <div class="ml-auto flex items-center gap-1 sm:gap-2">
         <button class="hidden sm:inline px-3 py-2 border border-[#2d3748] rounded-xl bg-[#1a1f2e] hover:bg-[#A1D6E2] hover:text-[#0a0e14] hover:border-[#A1D6E2]" @click="exportCSV()">Export CSV</button>
         <button class="hidden sm:inline px-3 py-2 border border-[#2d3748] rounded-xl bg-[#1a1f2e] hover:bg-[#A1D6E2] hover:text-[#0a0e14] hover:border-[#A1D6E2]" @click="saveView()">Save View</button>
@@ -80,62 +86,122 @@
       </div>
     </div>
 
-    <!-- (Old inline header filters hidden on desktop remain untouched) -->
-    <div class="max-w-7xl mx-auto px-3 sm:px-4 pb-2 sm:pb-3 hidden"></div>
+    <!-- Filters (header inline) now hidden on desktop in favor of left sidebar; mobile drawer remains -->
+    <div class="max-w-7xl mx-auto px-3 sm:px-4 pb-2 sm:pb-3 hidden">
+      <!-- Search with typeahead -->
+      <div class="relative w-full sm:w-96" x-ref="searchWrap">
+        <label for="q" class="sr-only">Search components, purls, CVEs, or licenses</label>
+        <input
+          id="q"
+          x-ref="search"
+          x-model="q"
+          @input="onInput"
+          @keydown.down.prevent="moveSel(1)"
+          @keydown.up.prevent="moveSel(-1)"
+          @keydown.enter.prevent="applySel()"
+          @keydown.escape.prevent="hideSuggest()"
+          placeholder="Search (component, purl, vuln id, license)"
+          class="w-full px-3 py-2 border rounded-xl focus:outline-none focus:ring"
+          aria-autocomplete="list" :aria-expanded="(showSuggest && suggestions.length) ? 'true' : 'false'" aria-haspopup="listbox" inputmode="search" autocomplete="off"
+        />
+        <!-- suggestions -->
+        <div
+          x-ref="suggest"
+          x-show="showSuggest && suggestions.length"
+          @pointerdown.prevent
+          class="absolute z-50 mt-1 w-full bg-[#1a1f2e] border border-[#2d3748] rounded-xl shadow-lg max-h-72 overflow-auto"
+          role="listbox"
+        >
+          <template x-for="(s, i) in suggestions" :key="s.key">
+            <button
+              type="button"
+              @pointerdown.prevent
+              @click="pick(s)"
+              :class="['w-full text-left px-3 py-2 flex items-center gap-2', i===selIdx ? 'bg-[#2d3748]' : 'hover:bg-[#2d3748]']"
+              :aria-selected="i===selIdx"
+              role="option"
+              style="min-height:44px"
+            >
+              <span class="text-[11px] px-1.5 py-0.5 rounded bg-[#2d3748]" x-text="s.group"></span>
+              <span class="truncate flex-1" x-text="s.label"></span>
+              <span class="text-xs text-[#94a3b8]" x-text="s.meta"></span>
+            </button>
+          </template>
+        </div>
+      </div>
+
+      <select x-model="dataset" @change="applyFilters(true)" class="px-3 py-2 border rounded-xl min-w-[10rem]" aria-label="Filter by dataset">
+        <option value="">All datasets</option>
+        <template x-for="d in datasets" :key="d._key">
+          <option :value="d.id" x-text="`${d.id} (${d.vulnerabilities})`"></option>
+        </template>
+      </select>
+
+      <select x-model="severity" @change="applyFilters(true)" class="px-3 py-2 border rounded-xl" aria-label="Filter by severity">
+        <option value="">All severities</option>
+        <template x-for="s in sevOpts" :key="s">
+          <option :value="s" x-text="s"></option>
+        </template>
+      </select>
+
+      <select x-model="fix" @change="applyFilters(true)" class="px-3 py-2 border rounded-xl" aria-label="Filter by fix availability">
+        <option value="">Has fix?</option>
+        <option value="has">Has fix</option>
+        <option value="none">No fix</option>
+      </select>
+
+      <label class="flex items-center gap-2 px-3 py-2 border rounded-xl">
+        <span class="text-sm">CVSS ≥</span>
+        <input type="number" min="0" max="10" step="0.1" x-model.number="cvssMin" @input="applyFilters(true)" class="w-32 outline-none" aria-label="Minimum CVSS" />
+      </label>
+
+
+
+      <div class="ml-auto flex items-center gap-2 text-sm">
+        <label class="whitespace-nowrap">Sort:</label>
+        <select x-model="sortKey" @change="applyFilters()" class="px-2 py-1 border rounded-lg" aria-label="Sort key">
+          <option value="severityRank">Severity</option>
+          <option value="cvss">CVSS</option>
+          <option value="component">Component</option>
+          <option value="dataset">Dataset</option>
+        </select>
+        <button class="px-2 py-1 border rounded-lg" @click="sortDir = sortDir==='desc'?'asc':'desc'; applyFilters()" :aria-label="'Sort ' + (sortDir==='desc'?'descending':'ascending')" x-text="sortDir==='desc' ? '↓' : '↑'"></button>
+
+        <!-- Desktop reset button -->
+        <button
+          class="px-3 py-2 border rounded-xl hidden sm:inline-flex"
+          @click="resetFilters()"
+          aria-label="Reset all filters"
+          title="Reset all filters"
+        >Reset</button>
+      </div>
+    </div>
   </header>
 
-  <!-- Unified filter drawer / sheet -->
-  <div x-cloak x-show="mobileFilters" class="fixed inset-0 z-50" aria-modal="true" role="dialog">
+      <!-- Unified filter drawer / sheet: bottom sheet on mobile, left sheet on desktop -->
+    <div x-cloak x-show="mobileFilters" class="fixed inset-0 z-50" aria-modal="true" role="dialog">
     <div class="absolute inset-0 bg-black/30" @click="mobileFilters=false"></div>
-
-    <!-- Desktop left sheet -->
-    <section class="hidden sm:flex absolute left-0 top-0 bottom-0 w-full sm:w-[28rem] max-w-full sm:max-w-[28rem] bg-[#1a1f2e] border-r border-[#2d3748] shadow-lg flex-col">
-      <header class="p-3 flex items-center gap-2 border-b border-[#2d3748]">
+      <!-- Desktop left sheet -->
+      <section class="hidden sm:flex absolute left-0 top-0 bottom-0 w-full sm:w-[28rem] max-w-full sm:max-w-[28rem] bg-[#1a1f2e] border-r border-[#2d3748] shadow-lg flex-col">
+        <header class="p-3 flex items-center gap-2 border-b border-[#2d3748]">
         <div class="font-medium">Filters</div>
         <button class="ml-auto p-2 rounded-xl border border-[#2d3748] bg-[#1a1f2e]" @click="mobileFilters=false" aria-label="Close filters">✕</button>
       </header>
       <div class="p-3 space-y-3 overflow-auto">
-        <!-- Search -->
-        <label class="text-xs text-[#94a3b8]">Search
-          <input
-            x-ref="search"
-            x-model="q"
-            @input="onInput"
-            @keydown.down.prevent="moveSel(1)"
-            @keydown.up.prevent="moveSel(-1)"
-            @keydown.enter.prevent="applySel()"
-            @keydown.escape.prevent="hideSuggest()"
-            placeholder="Search (component, purl, vuln id, license)"
-            class="mt-1 w-full px-3 py-2 border border-[#2d3748] rounded-xl bg-[#1a1f2e] text-[#e2e8f0] placeholder-[#94a3b8]"
-            inputmode="search"
-            autocomplete="off"
-          />
+        <div class="relative" x-ref="searchWrap">
+          <label for="q-d" class="sr-only">Search</label>
+          <input id="q-d" x-ref="search" x-model="q" @input="onInput" @keydown.down.prevent="moveSel(1)" @keydown.up.prevent="moveSel(-1)" @keydown.enter.prevent="applySel()" @keydown.escape.prevent="hideSuggest()" placeholder="Search (component, purl, vuln id, license)" class="w-full px-3 py-3 border border-[#2d3748] rounded-xl bg-[#1a1f2e] text-[#e2e8f0] placeholder-[#94a3b8]" inputmode="search" autocomplete="off" />
           <!-- suggestions -->
-          <div
-            x-ref="suggest"
-            x-show="showSuggest && suggestions.length"
-            @pointerdown.prevent
-            class="absolute z-50 mt-1 w-[calc(100%-1.5rem)] bg-[#1a1f2e] border border-[#2d3748] rounded-xl shadow-lg max-h-72 overflow-auto"
-            role="listbox"
-          >
+          <div x-ref="suggest" x-show="showSuggest && suggestions.length" @pointerdown.prevent class="absolute z-50 mt-1 w-full bg-[#1a1f2e] border border-[#2d3748] rounded-xl shadow-lg max-h-72 overflow-auto" role="listbox">
             <template x-for="(s, i) in suggestions" :key="s.key">
-              <button
-                type="button"
-                @pointerdown.prevent
-                @click="pick(s)"
-                :class="['w-full text-left px-3 py-2 flex items-center gap-2', i===selIdx ? 'bg-[#2d3748]' : 'hover:bg-[#2d3748]']"
-                :aria-selected="i===selIdx"
-                role="option"
-                style="min-height:44px"
-              >
+              <button type="button" @pointerdown.prevent @click="pick(s)" :class="['w-full text-left px-3 py-2 flex items-center gap-2', i===selIdx ? 'bg-[#2d3748]' : 'hover:bg-[#2d3748]']" :aria-selected="i===selIdx" role="option" style="min-height:44px">
                 <span class="text-[11px] px-1.5 py-0.5 rounded bg-[#2d3748]" x-text="s.group"></span>
                 <span class="truncate flex-1" x-text="s.label"></span>
                 <span class="text-xs text-[#94a3b8]" x-text="s.meta"></span>
               </button>
             </template>
           </div>
-        </label>
-
+        </div>
         <div class="grid grid-cols-1 gap-3">
           <label class="text-xs text-[#94a3b8]">Dataset
             <select x-model="dataset" class="mt-1 w-full px-3 py-2 border border-[#2d3748] rounded-xl bg-[#1a1f2e] text-[#e2e8f0]">
@@ -145,7 +211,6 @@
               </template>
             </select>
           </label>
-
           <label class="text-xs text-[#94a3b8]">Severity
             <select x-model="severity" class="mt-1 w-full px-3 py-2 border border-[#2d3748] rounded-xl bg-[#1a1f2e] text-[#e2e8f0]">
               <option value="">All severities</option>
@@ -154,7 +219,6 @@
               </template>
             </select>
           </label>
-
           <label class="text-xs text-[#94a3b8]">Fix status
             <select x-model="fix" class="mt-1 w-full px-3 py-2 border border-[#2d3748] rounded-xl bg-[#1a1f2e] text-[#e2e8f0]">
               <option value="">Has fix?</option>
@@ -162,11 +226,13 @@
               <option value="none">No fix</option>
             </select>
           </label>
-
-          <!-- CVSS (standard size like other inputs) -->
-          <label class="text-xs text-[#94a3b8]">CVSS ≥
-            <input type="number" min="0" max="10" step="0.1" x-model.number="cvssMin" class="mt-1 w-full px-3 py-2 border border-[#2d3748] rounded-xl bg-[#1a1f2e] text-[#e2e8f0] placeholder-[#94a3b8]" />
-          </label>
+          <div class="flex items-center gap-3">
+            <label class="flex items-center gap-2 px-3 py-2 border border-[#2d3748] rounded-xl flex-1 bg-[#1a1f2e]">
+              <span class="text-sm text-[#e2e8f0]">CVSS ≥</span>
+              <input type="number" min="0" max="10" step="0.1" x-model.number="cvssMin" class="w-32 outline-none bg-transparent text-[#e2e8f0] placeholder-[#94a3b8]" />
+            </label>
+          </div>
+          
         </div>
       </div>
       <div class="p-3 grid grid-cols-2 gap-2 border-t border-[#2d3748]">
@@ -174,7 +240,6 @@
         <button class="btn" :class="lastAction === 'reset' ? 'bg-[#A1D6E2] text-[#0a0e14] border-[#A1D6E2]' : 'bg-[#1a1f2e] border-[#2d3748] text-[#e2e8f0]'" @click="resetFilters(); mobileFilters=false; lastAction='reset'">Reset</button>
       </div>
     </section>
-
     <!-- Mobile bottom sheet -->
     <section class="absolute inset-x-0 bottom-0 max-h-[85vh] bg-[#1a1f2e] border-t border-[#2d3748] rounded-t-2xl shadow-lg flex sm:hidden flex-col">
       <header class="p-3 flex items-center gap-2">
@@ -182,46 +247,20 @@
         <button class="ml-auto p-2 rounded-xl border border-[#2d3748] bg-[#1a1f2e]" @click="mobileFilters=false" aria-label="Close filters">✕</button>
       </header>
       <div class="p-3 space-y-3 overflow-auto">
-        <!-- Search -->
-        <label class="text-xs text-[#94a3b8]">Search
-          <input
-            x-ref="search"
-            x-model="q"
-            @input="onInput"
-            @keydown.down.prevent="moveSel(1)"
-            @keydown.up.prevent="moveSel(-1)"
-            @keydown.enter.prevent="applySel()"
-            @keydown.escape.prevent="hideSuggest()"
-            placeholder="Search (component, purl, vuln id, license)"
-            class="mt-1 w-full px-3 py-2 border border-[#2d3748] rounded-xl bg-[#1a1f2e] text-[#e2e8f0] placeholder-[#94a3b8]"
-            inputmode="search"
-            autocomplete="off"
-          />
-          <div
-            x-ref="suggest"
-            x-show="showSuggest && suggestions.length"
-            @pointerdown.prevent
-            class="absolute z-50 mt-1 w-[calc(100%-1.5rem)] bg-[#1a1f2e] border border-[#2d3748] rounded-xl shadow-lg max-h-72 overflow-auto"
-            role="listbox"
-          >
+        <div class="relative" x-ref="searchWrap">
+          <label for="q-m" class="sr-only">Search</label>
+          <input id="q-m" x-ref="search" x-model="q" @input="onInput" @keydown.down.prevent="moveSel(1)" @keydown.up.prevent="moveSel(-1)" @keydown.enter.prevent="applySel()" @keydown.escape.prevent="hideSuggest()" placeholder="Search (component, purl, vull id, license)" class="w-full px-3 py-3 border border-[#2d3748] rounded-xl bg-[#1a1f2e] text-[#e2e8f0] placeholder-[#94a3b8]" inputmode="search" autocomplete="off" />
+          <!-- suggestions -->
+          <div x-ref="suggest" x-show="showSuggest && suggestions.length" @pointerdown.prevent class="absolute z-50 mt-1 w-full bg-[#1a1f2e] border border-[#2d3748] rounded-xl shadow-lg max-h-72 overflow-auto" role="listbox">
             <template x-for="(s, i) in suggestions" :key="s.key">
-              <button
-                type="button"
-                @pointerdown.prevent
-                @click="pick(s)"
-                :class="['w-full text-left px-3 py-2 flex items-center gap-2', i===selIdx ? 'bg-[#2d3748]' : 'hover:bg-[#2d3748]']"
-                :aria-selected="i===selIdx"
-                role="option"
-                style="min-height:44px"
-              >
+              <button type="button" @pointerdown.prevent @click="pick(s)" :class="['w-full text-left px-3 py-2 flex items-center gap-2', i===selIdx ? 'bg-[#2d3748]' : 'hover:bg-[#2d3748]']" :aria-selected="i===selIdx" role="option" style="min-height:44px">
                 <span class="text-[11px] px-1.5 py-0.5 rounded bg-[#2d3748]" x-text="s.group"></span>
                 <span class="truncate flex-1" x-text="s.label"></span>
                 <span class="text-xs text-[#94a3b8]" x-text="s.meta"></span>
               </button>
             </template>
           </div>
-        </label>
-
+        </div>
         <div class="grid grid-cols-1 gap-3">
           <label class="text-xs text-[#94a3b8]">Dataset
             <select x-model="dataset" class="mt-1 w-full px-3 py-2 border border-[#2d3748] rounded-xl bg-[#1a1f2e] text-[#e2e8f0]">
@@ -229,9 +268,8 @@
               <template x-for="d in datasets" :key="d._key">
                 <option :value="d.id" x-text="`${d.id} (${d.vulnerabilities})`"></option>
               </template>
-            </select>
-          </label>
-
+              </select>
+            </label>
           <label class="text-xs text-[#94a3b8]">Severity
             <select x-model="severity" class="mt-1 w-full px-3 py-2 border border-[#2d3748] rounded-xl bg-[#1a1f2e] text-[#e2e8f0]">
               <option value="">All severities</option>
@@ -240,7 +278,6 @@
               </template>
             </select>
           </label>
-
           <label class="text-xs text-[#94a3b8]">Fix status
             <select x-model="fix" class="mt-1 w-full px-3 py-2 border border-[#2d3748] rounded-xl bg-[#1a1f2e] text-[#e2e8f0]">
               <option value="">Has fix?</option>
@@ -248,11 +285,13 @@
               <option value="none">No fix</option>
             </select>
           </label>
-
-          <!-- CVSS (standard size like other inputs) -->
-          <label class="text-xs text-[#94a3b8]">CVSS ≥
-            <input type="number" min="0" max="10" step="0.1" x-model.number="cvssMin" class="mt-1 w-full px-3 py-2 border border-[#2d3748] rounded-xl bg-[#1a1f2e] text-[#e2e8f0] placeholder-[#94a3b8]" />
-          </label>
+          <div class="flex items-center gap-3">
+            <label class="flex items-center gap-2 px-3 py-2 border border-[#2d3748] rounded-xl flex-1 bg-[#1a1f2e]">
+              <span class="text-sm text-[#e2e8f0]">CVSS ≥</span>
+              <input type="number" min="0" max="10" step="0.1" x-model.number="cvssMin" class="w-32 outline-none bg-transparent text-[#e2e8f0] placeholder-[#94a3b8]" />
+            </label>
+          </div>
+          
         </div>
       </div>
       <div class="sticky-actions p-3 grid grid-cols-2 gap-2">
@@ -264,96 +303,271 @@
 
   <main class="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6" x-cloak>
     <div class="space-y-6">
-      <!-- (Rest of dashboard unchanged) -->
-
-      <!-- ... Row 1, Row 2, Row 3, Table, Pagination ... exactly as before ... -->
-
-      <!-- Vulnerabilities table / cards -->
-      <section>
-        <div class="mb-2 text-sm text-[#94a3b8]">
-          <span x-text="`Showing ${filtered.length} of ${items.length} vulnerabilities`"></span>
+    <!-- Row 1: Totals (8/12) + Datasets (4/12) -->
+    <section class="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4 mb-4 sm:mb-6" aria-live="polite">
+      <!-- Left: totals + severities (6 equal tiles) -->
+      <div class="lg:col-span-8 grid grid-cols-2 md:grid-cols-6 gap-3">
+        <div class="card col-span-2">
+          <div class="text-xs text-[#94a3b8]">Total vulnerabilities</div>
+          <div class="text-2xl font-semibold" x-text="filtered.length"></div>
+          <div class="muted mt-1" x-text="filterSummary"></div>
         </div>
-        <div class="overflow-x-auto bg-[#1a1f2e] border border-[#2d3748] rounded-2xl shadow-sm">
-          <table class="min-w-full text-sm responsive">
-            <thead class="bg-[#2d3748]/60">
-              <tr class="text-left">
-                <th class="px-4 py-3">Severity</th>
-                <th class="px-4 py-3">CVSS</th>
-                <th class="px-4 py-3">Component</th>
-                <th class="px-4 py-3">Version</th>
-                <th class="px-4 py-3">License</th>
-                <th class="px-4 py-3">Vuln ID</th>
-                <th class="px-4 py-3 w-40">Dataset</th>
-                <th class="px-4 py-3 w-40">Links</th>
-              </tr>
-            </thead>
-            <tbody>
-              <template x-for="row in paged" :key="row._key">
-                <tr class="border-t border-[#2d3748] hover:bg-[#2d3748]/60">
-                  <td class="px-4 py-2" :data-label="'Severity'">
-                    <span class="px-2 py-0.5 rounded-lg text-xs font-semibold" :class="badge(row.severity)" x-text="row.severity || 'UNKNOWN'"></span>
-                  </td>
-                  <td class="px-4 py-2" :data-label="'CVSS'" x-text="row.cvss ?? '-' "></td>
-                  <td class="px-4 py-2" :data-label="'Component'">
-                    <div class="font-medium flex items-center gap-1">
-                      <svg aria-hidden="true" viewBox="0 0 24 24" width="14" height="14" class="text-[#94a3b8]"><path fill="currentColor" d="M4 4h6l2 2h8v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/></svg>
-                      <span x-text="row.component || '-' "></span>
-                    </div>
-                    <div class="text-xs text-[#94a3b8] truncate max-w-[28rem]" x-text="row.purl"></div>
-                  </td>
-                  <td class="px-4 py-2" :data-label="'Version'" x-text="row.version || '-' "></td>
-                  <td class="px-4 py-2" :data-label="'License'">
-                    <template x-for="(l,i) in (row.licenses || [])" :key="row._key+'-lic-'+i">
-                      <span class="mr-1 px-1.5 py-0.5 bg-[#2d3748] rounded" x-text="l"></span>
-                    </template>
-                  </td>
-                  <td class="px-4 py-2" :data-label="'Vuln ID'">
-                    <template x-if="row.id">
-                      <button class="underline text-[color:var(--primary)]" @click="applyTopCVE(row.id)" x-text="row.id"></button>
-                    </template>
-                    <template x-if="!row.id">
-                      <span>-</span>
-                    </template>
-                  </td>
-                  <td class="px-4 py-2" :data-label="'Dataset'">
-                    <span class="text-xs px-2 py-1 bg-[#2d3748] rounded inline-flex items-center gap-1">
-                      <svg aria-hidden="true" viewBox="0 0 24 24" width="12" height="12" class="text-[#94a3b8]"><path fill="currentColor" d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6V4zm2 0v16h8a2 2 0 0 0 2-2V8l-6-4h-4z"/></svg>
-                      <span x-text="row.dataset"></span>
-                    </span>
-                  </td>
-                  <td class="px-4 py-2" :data-label="'Links'">
-                    <template x-for="(u,i) in (row.urls || [])" :key="row._key+'-url-'+i">
-                      <a class="text-blue-600 underline mr-2" :href="u" target="_blank" rel="noopener" x-text="`ref${i+1}`"></a>
-                    </template>
-                  </td>
-                </tr>
+        <template x-for="sev in ['CRITICAL','HIGH','MEDIUM','LOW']" :key="'sev-'+sev">
+          <div class="card">
+            <div class="text-xs text-[#94a3b8]" x-text="sev"></div>
+            <div class="text-xl font-semibold" x-text="sevCountsFiltered[sev] || 0"></div>
+          </div>
+        </template>
+      </div>
+
+      <!-- Right: Datasets -->
+      <div class="card lg:col-span-4">
+        <div class="text-sm font-medium mb-3">Datasets in view</div>
+        <template x-if="Object.keys(perDatasetSev).length === 0">
+          <div class="muted">No datasets in the current view.</div>
+        </template>
+        <div class="space-y-3 max-h-60 overflow-auto">
+          <template x-for="(v, name) in perDatasetSev" :key="'ds-'+name">
+            <div>
+              <div class="flex items-center justify-between text-sm">
+                <div class="font-medium truncate" x-text="name"></div>
+                <div class="text-xs text-[#94a3b8]" x-text="`${v.total} vulns`"></div>
+              </div>
+              <div class="bar"><div class="bar-fill" :style="`width:${Math.min(100, (v.total/Math.max(1, filtered.length))*100)}%`"></div></div>
+              <div class="mt-1 flex flex-wrap gap-2 text-[11px] text-[#94a3b8]">
+                <span>CRIT: <b x-text="v.CRITICAL||0"></b></span>
+                <span>HIGH: <b x-text="v.HIGH||0"></b></span>
+                <span>MED: <b x-text="v.MEDIUM||0"></b></span>
+                <span>LOW: <b x-text="v.LOW||0"></b></span>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </section>
+
+    <!-- Row 2: Left analytics (8/12) + Right Top CVEs (4/12) -->
+    <section class="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4 mb-4 sm:mb-6">
+      <!-- Left analytics grid -->
+      <div class="lg:col-span-8 grid gap-4 items-stretch [grid-template-columns:repeat(auto-fit,minmax(240px,1fr))]">
+        <!-- Fix availability -->
+        <div class="card h-full flex items-start gap-3" x-show="fixRateFiltered > 0">
+          <div class="shrink-0">
+            <svg viewBox="0 0 44 44" width="64" height="64" aria-label="Fix availability">
+              <circle cx="22" cy="22" r="18" fill="none" stroke="#e5e7eb" stroke-width="6"/>
+              <circle cx="22" cy="22" r="18" fill="none" :stroke-dasharray="ringCircumference" :stroke-dashoffset="ringOffsetFix" :stroke="fixRateFiltered ? ringColor : '#e5e7eb'" stroke-linecap="round" stroke-width="6" style="transform: rotate(-90deg); transform-origin: 50% 50%;"/>
+            </svg>
+          </div>
+          <div>
+            <div class="text-xs text-[#94a3b8]">Fix availability</div>
+            <div class="text-2xl font-semibold" x-text="fixRateFiltered + '%' "></div>
+            <div class="muted mt-1" x-text="fixRateFiltered ? '% of vulnerabilities with known fixes' : 'No known fixes in this view'"></div>
+          </div>
+        </div>
+
+        <!-- Severity mix -->
+        <div class="card h-full md:col-span-1 flex items-start gap-4">
+          <div class="shrink-0">
+            <svg viewBox="0 0 44 44" width="88" height="88" aria-label="Severity mix">
+              <circle cx="22" cy="22" r="16" fill="none" class="text-[#2d3748]" stroke="currentColor" stroke-width="8"/>
+              <circle cx="22" cy="22" r="16" fill="none" :stroke="donutSegs.CRITICAL.color" :stroke-dasharray="donutSegs.CRITICAL.dash" :stroke-dashoffset="donutSegs.CRITICAL.offset" stroke-width="8" style="transform: rotate(-90deg); transform-origin: 50% 50%;" x-show="donutSegs.CRITICAL.count > 0"/>
+              <circle cx="22" cy="22" r="16" fill="none" :stroke="donutSegs.HIGH.color" :stroke-dasharray="donutSegs.HIGH.dash" :stroke-dashoffset="donutSegs.HIGH.offset" stroke-width="8" style="transform: rotate(-90deg); transform-origin: 50% 50%;" x-show="donutSegs.HIGH.count > 0"/>
+              <circle cx="22" cy="22" r="16" fill="none" :stroke="donutSegs.MEDIUM.color" :stroke-dasharray="donutSegs.MEDIUM.dash" :stroke-dashoffset="donutSegs.MEDIUM.offset" stroke-width="8" style="transform: rotate(-90deg); transform-origin: 50% 50%;" x-show="donutSegs.MEDIUM.count > 0"/>
+              <circle cx="22" cy="22" r="16" fill="none" :stroke="donutSegs.LOW.color" :stroke-dasharray="donutSegs.LOW.dash" :stroke-dashoffset="donutSegs.LOW.offset" stroke-width="8" style="transform: rotate(-90deg); transform-origin: 50% 50%;" x-show="donutSegs.LOW.count > 0"/>
+              <circle cx="22" cy="22" r="16" fill="none" :stroke="donutSegs.INFO.color" :stroke-dasharray="donutSegs.INFO.dash" :stroke-dashoffset="donutSegs.INFO.offset" stroke-width="8" style="transform: rotate(-90deg); transform-origin: 50% 50%;" x-show="donutSegs.INFO.count > 0"/>
+              <circle cx="22" cy="22" r="16" fill="none" :stroke="donutSegs.UNKNOWN.color" :stroke-dasharray="donutSegs.UNKNOWN.dash" :stroke-dashoffset="donutSegs.UNKNOWN.offset" stroke-width="8" style="transform: rotate(-90deg); transform-origin: 50% 50%;" x-show="donutSegs.UNKNOWN.count > 0"/>
+            </svg>
+          </div>
+          <div>
+            <div class="text-sm font-medium mb-2">Severity mix</div>
+            <div class="text-xs space-y-1">
+              <template x-for="seg in donutLegend" :key="'leg-'+seg.label">
+                <div class="flex items-center gap-2">
+                  <span class="inline-block w-3 h-3 rounded" :style="`background:${seg.color}`"></span>
+                  <span class="text-[#94a3b8]" x-text="`${seg.label}: ${seg.count}`"></span>
+                </div>
               </template>
-            </tbody>
-          </table>
-        </div>
-
-        <div class="mt-4 flex items-center justify-between">
-          <div class="text-sm text-[#94a3b8]">Page <span x-text="page+1"></span> / <span x-text="pages"></span></div>
-          <div class="flex gap-2">
-            <button class="px-4 py-2 border border-[#2d3748] rounded-lg disabled:opacity-50 bg-[#1a1f2e] text-[#e2e8f0] hover:bg-[#A1D6E2] hover:text-[#0a0e14] hover:border-[#A1D6E2]" :disabled="page===0" @click="prev()" aria-label="Previous page">Prev</button>
-            <button class="px-4 py-2 border border-[#2d3748] rounded-lg disabled:opacity-50 bg-[#1a1f2e] text-[#e2e8f0] hover:bg-[#A1D6E2] hover:text-[#0a0e14] hover:border-[#A1D6E2]" :disabled="page+1>=pages" @click="next()" aria-label="Next page">Next</button>
+              <div class="muted mt-2" x-text="filterSummary"></div>
+            </div>
           </div>
         </div>
 
-        <div class="sm:hidden sticky-actions mt-3">
-          <div class="grid grid-cols-3 gap-2 p-2">
-            <button class="btn" @click="exportCSV()">Export</button>
-            <button class="btn" @click="saveView()">Save</button>
-            <button class="btn" @click="loadView()">Load</button>
+        <!-- Top components -->
+        <div class="card h-full">
+          <div class="text-sm font-medium mb-2">Top components by vulnerabilities</div>
+          <div class="space-y-2">
+            <template x-for="row in topComponents" :key="'tc-'+row.name">
+              <div class="flex items-center gap-3">
+                <div class="w-36 truncate text-xs text-[#e2e8f0]" :title="row.name" x-text="row.name"></div>
+                <div class="flex-1 h-2 bg-[#2d3748] rounded"><div class="h-2 rounded" :style="`width:${row.pct}%; background:#10b981`"></div></div>
+                <div class="w-8 text-right text-xs text-[#94a3b8]" x-text="row.count"></div>
+              </div>
+            </template>
           </div>
         </div>
-      </section>
+      </div>
+
+      <!-- Right: Top CVEs -->
+      <div class="card lg:col-span-4 h-full">
+        <div class="flex items-center justify-between mb-2">
+          <div class="text-sm font-medium">Top CVEs</div>
+          <button class="text-xs underline" @click="applyTopCVE()">Clear filter</button>
+        </div>
+        <template x-if="!(metrics.topCVEs||[]).length">
+          <div class="muted">No CVE IDs found.</div>
+        </template>
+        <ul class="text-sm grid grid-cols-1 gap-3 max-h-80 overflow-auto">
+          <template x-for="cve in (metrics.topCVEs || [])" :key="'cve-'+cve.id">
+            <li class="border rounded-xl p-3">
+              <div class="font-medium">
+                <button class="text-blue-600 underline" @click="applyTopCVE(cve.id)" x-text="cve.id"></button>
+              </div>
+              <div class="muted mt-1">
+                <span x-text="`Count: ${cve.count}`"></span>
+                · <span x-text="`Max CVSS: ${cve.maxCVSS ?? '-'}`"></span>
+                <template x-if="(cve.datasets||[]).length">· <span x-text="`Datasets: ${cve.datasets.join(', ')}`"></span></template>
+              </div>
+            </li>
+          </template>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Row 3: Remaining analytics -->
+    <section class="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 mb-4 sm:mb-6">
+      <!-- CVSS distribution -->
+      <div class="card h-full">
+        <div class="text-sm font-medium mb-2">CVSS distribution</div>
+        <svg :viewBox="`0 0 ${sparkW} ${sparkH}`" :width="sparkW" :height="sparkH" role="img" aria-label="CVSS sparkline">
+          <polyline :points="sparkGrid" fill="none" stroke="#e5e7eb" stroke-width="1"/>
+          <polyline :points="cvssPath" fill="none" stroke="#2563eb" stroke-width="2"/>
+        </svg>
+        <div class="muted mt-2" x-text="cvssStatsText"></div>
+      </div>
+
+      <!-- Top license analytics -->
+      <div class="card">
+        <div class="text-sm font-medium mb-2">Top licenses by vulnerabilities</div>
+        <div class="space-y-2">
+          <template x-for="row in topLicenses" :key="'tl-'+row.name">
+            <div class="flex items-center gap-3">
+                              <div class="w-36 truncate text-xs text-[#e2e8f0]" :title="row.name" x-text="row.name"></div>
+                              <div class="flex-1 h-2 bg-[#2d3748] rounded"><div class="h-2 rounded" :style="`width:${row.pct}%; background:#6366f1`"></div></div>
+                <div class="w-8 text-right text-xs text-[#94a3b8]" x-text="row.count"></div>
+            </div>
+          </template>
+          <template x-if="!topLicenses.length"><div class="muted">No license data</div></template>
+        </div>
+      </div>
+
+      <!-- Fix rate by dataset -->
+      <div class="card">
+        <div class="text-sm font-medium mb-2">Fix availability by dataset</div>
+        <div class="space-y-2">
+          <template x-for="row in dsFixRates" :key="'dsfr-'+row.name">
+            <div class="flex items-center gap-3">
+                              <div class="w-32 truncate text-xs text-[#e2e8f0]" :title="row.name" x-text="row.name"></div>
+                              <div class="flex-1 h-2 bg-[#2d3748] rounded">
+                <div class="h-2 rounded" :style="`width:${row.rate}%; background:${row.rate>=67?'#10b981':row.rate>=33?'#f59e0b':'#ef4444'}`"></div>
+              </div>
+                <div class="w-10 text-right text-xs text-[#94a3b8]" x-text="row.rate + '%' "></div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </section>
+
+    <!-- Vulnerabilities table / cards -->
+    <section>
+      <div class="mb-2 text-sm text-[#94a3b8]">
+        <span x-text="`Showing ${filtered.length} of ${items.length} vulnerabilities`"></span>
+      </div>
+      <div class="overflow-x-auto bg-[#1a1f2e] border border-[#2d3748] rounded-2xl shadow-sm">
+        <table class="min-w-full text-sm responsive">
+          <thead class="bg-[#2d3748]/60">
+            <tr class="text-left">
+              <th class="px-4 py-3">Severity</th>
+              <th class="px-4 py-3">CVSS</th>
+              <th class="px-4 py-3">Component</th>
+              <th class="px-4 py-3">Version</th>
+              <th class="px-4 py-3">License</th>
+              <th class="px-4 py-3">Vuln ID</th>
+              <th class="px-4 py-3 w-40">Dataset</th>
+              <th class="px-4 py-3 w-40">Links</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="row in paged" :key="row._key">
+              <tr class="border-t border-[#2d3748] hover:bg-[#2d3748]/60">
+                <td class="px-4 py-2" :data-label="'Severity'">
+                  <span class="px-2 py-0.5 rounded-lg text-xs font-semibold" :class="badge(row.severity)" x-text="row.severity || 'UNKNOWN'"></span>
+                </td>
+                <td class="px-4 py-2" :data-label="'CVSS'" x-text="row.cvss ?? '-' "></td>
+                <td class="px-4 py-2" :data-label="'Component'">
+                  <div class="font-medium flex items-center gap-1">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" width="14" height="14" class="text-[#94a3b8]"><path fill="currentColor" d="M4 4h6l2 2h8v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/></svg>
+                    <span x-text="row.component || '-' "></span>
+                  </div>
+                  <div class="text-xs text-[#94a3b8] truncate max-w-[28rem]" x-text="row.purl"></div>
+                </td>
+                <td class="px-4 py-2" :data-label="'Version'" x-text="row.version || '-' "></td>
+                <td class="px-4 py-2" :data-label="'License'">
+                  <template x-for="(l,i) in (row.licenses || [])" :key="row._key+'-lic-'+i">
+                    <span class="mr-1 px-1.5 py-0.5 bg-[#2d3748] rounded" x-text="l"></span>
+                  </template>
+                </td>
+                <td class="px-4 py-2" :data-label="'Vuln ID'">
+                  <template x-if="row.id">
+                    <button class="underline text-[color:var(--primary)]" @click="applyTopCVE(row.id)" x-text="row.id"></button>
+                  </template>
+                  <template x-if="!row.id">
+                    <span>-</span>
+                  </template>
+                </td>
+                <td class="px-4 py-2" :data-label="'Dataset'">
+                  <span class="text-xs px-2 py-1 bg-[#2d3748] rounded inline-flex items-center gap-1">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" width="12" height="12" class="text-[#94a3b8]"><path fill="currentColor" d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6V4zm2 0v16h8a2 2 0 0 0 2-2V8l-6-4h-4z"/></svg>
+                    <span x-text="row.dataset"></span>
+                  </span>
+                  <template x-if="row.direct"><span class="ml-1 text-[10px] px-1 py-0.5 bg-emerald-100 text-emerald-700 rounded">direct</span></template>
+                </td>
+                <td class="px-4 py-2" :data-label="'Links'">
+                  <template x-for="(u,i) in (row.urls || [])" :key="row._key+'-url-'+i">
+                    <a class="text-blue-600 underline mr-2" :href="u" target="_blank" rel="noopener" x-text="`ref${i+1}`"></a>
+                  </template>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Pagination: bigger tap targets on mobile -->
+      <div class="mt-4 flex items-center justify-between">
+        <div class="text-sm text-[#94a3b8]">Page <span x-text="page+1"></span> / <span x-text="pages"></span></div>
+        <div class="flex gap-2">
+          <button class="px-4 py-2 border border-[#2d3748] rounded-lg disabled:opacity-50 bg-[#1a1f2e] text-[#e2e8f0] hover:bg-[#A1D6E2] hover:text-[#0a0e14] hover:border-[#A1D6E2]" :disabled="page===0" @click="prev()" aria-label="Previous page">Prev</button>
+          <button class="px-4 py-2 border border-[#2d3748] rounded-lg disabled:opacity-50 bg-[#1a1f2e] text-[#e2e8f0] hover:bg-[#A1D6E2] hover:text-[#0a0e14] hover:border-[#A1D6E2]" :disabled="page+1>=pages" @click="next()" aria-label="Next page">Next</button>
+        </div>
+      </div>
+
+      <!-- Mobile sticky actions for quick access -->
+      <div class="sm:hidden sticky-actions mt-3">
+        <div class="grid grid-cols-3 gap-2 p-2">
+          <button class="btn" @click="exportCSV()">Export</button>
+          <button class="btn" @click="saveView()">Save</button>
+          <button class="btn" @click="loadView()">Load</button>
+        </div>
+      </div>
+    </section>
+      </div>
     </div>
   </main>
 
   <script>
     function app(){
       return {
+        // state from parse-sboms.json
         items: [],
         filtered: [],
         paged: [],
@@ -366,8 +580,9 @@
         severity: "",
         fix: "",
         cvssMin: 0,
+        onlyDirect: false,
         mobileFilters: false,
-        lastAction: "apply",
+        lastAction: "apply", // Track last action: "apply" or "reset"
         // severity dropdown (dynamic)
         sevBaseOrder: ['CRITICAL','HIGH','MEDIUM','LOW','INFO','UNKNOWN'],
         sevOpts: ['CRITICAL','HIGH','MEDIUM','LOW'],
@@ -380,7 +595,7 @@
         sortKey: "severityRank",
         sortDir: "desc",
         page: 0,
-        perPage: (matchMedia('(max-width: 640px)').matches ? 20 : 50),
+        perPage: (matchMedia('(max-width: 640px)').matches ? 20 : 50), // smaller pages on phones
         pages: 0,
         metaText: "",
 
@@ -412,7 +627,7 @@
           clearTimeout(this._suggestTimer);
           const val = this.q.trim();
           if (!val){ this.suggestions=[]; this.hideSuggest(); return; }
-          this._suggestTimer = setTimeout(() => this.updateSuggestions(val), 120);
+          this._suggestTimer = setTimeout(() => this.updateSuggestions(val), 120); // slightly more debounce for mobile
         },
         updateSuggestions(val){
           const q = val.toLowerCase();
@@ -448,7 +663,7 @@
         },
 
         /* ------- micro-chart helpers ------- */
-        ringCircumference: 2 * Math.PI * 18,
+        ringCircumference: 2 * Math.PI * 18, // r=18
         get ringOffsetFix(){
           const pct = Math.max(0, Math.min(100, this.fixRateFiltered)) / 100;
           return this.ringCircumference * (1 - pct);
@@ -494,6 +709,7 @@
           }
         },
 
+        // sparkline
         sparkW: 360,
         sparkH: 64,
         cvssPath: "",
@@ -518,6 +734,7 @@
           this.cvssStatsText = `n=${n} · min=${min?.toFixed(1)} · med=${med} · p90=${q(0.9).toFixed(1)}`;
         },
 
+        // top components micro bars
         topComponents: [],
         buildTopComponents(){
           const counts = {};
@@ -532,6 +749,7 @@
           this.topComponents = top.map(x=>({ ...x, pct: Math.round(100*x.count/max) }));
         },
 
+        // top licenses micro bars
         topLicenses: [],
         buildTopLicenses(){
           const counts = {};
@@ -550,6 +768,7 @@
           this.topLicenses = top.map(x=>({ ...x, pct: Math.round(100*x.count/max) }));
         },
 
+        // fix rate by dataset
         dsFixRates: [],
         buildDsFixRates(){
           const map = {};
@@ -564,6 +783,7 @@
           this.dsFixRates = rows.slice(0,6);
         },
 
+        // replacement card data for 0% fix-rate
         noFixSevBars: [],
         buildNoFixBars(){
           const nf = this.filtered.filter(r => !(r.fixedVersions||[]).length);
@@ -575,11 +795,14 @@
             .map(s => ({ label: s, count: counts[s], pct: Math.round(100 * counts[s] / total), color: this.donutSegs[s].color }));
         },
 
+        // dropdown options
         updateSeverityOptions(){
           const q = this.q.trim().toLowerCase();
           const ds = this.dataset, fix = this.fix, cv = Number(this.cvssMin)||0;
+          const only = this.onlyDirect;
           const base = this.items.filter(r => {
             if (ds && r.dataset !== ds) return false;
+            if (only && !r.direct) return false;
             if (cv && (r.cvss ?? -1) < cv) return false;
             if (fix === 'has' && !(r.fixedVersions||[]).length) return false;
             if (fix === 'none' && (r.fixedVersions||[]).length) return false;
@@ -610,20 +833,23 @@
           this.updateSeverityOptions();
           this.applyFilters(true);
 
+          // click/tap outside -> close suggestions, but allow taps inside the panel
           document.addEventListener('click', (e)=>{
             const wrap = this.$refs.searchWrap;
             const panel = this.$refs.suggest;
             if (!wrap) return;
             const t = e.target;
-            const insideWrap = wrap.contains?.(t);
+            const insideWrap = wrap.contains(t);
             const insidePanel = panel ? panel.contains(t) : false;
             if (!insideWrap && !insidePanel) this.hideSuggest();
           }, { capture: true });
 
+          // Build non-critical charts after idle (snappier on low-end phones)
           const idle = window.requestIdleCallback || ((fn)=>setTimeout(fn, 120));
           idle(()=>{ this.buildTopComponents(); this.buildTopLicenses(); this.buildDsFixRates(); });
         },
 
+        // utils
         badge(sev){
           const s = (sev||"").toUpperCase();
           const base = "px-2 py-0.5 rounded-lg text-xs font-semibold";
@@ -640,6 +866,7 @@
           this.filtered = this.items.filter(r => {
             if (ds && r.dataset !== ds) return false;
             if (sev && (r.severity||"").toUpperCase() !== sev) return false;
+            if (this.onlyDirect && !r.direct) return false;
             if (cv && (r.cvss ?? -1) < cv) return false;
             if (fix === "has" && !(r.fixedVersions || []).length) return false;
             if (fix === "none" && (r.fixedVersions || []).length) return false;
@@ -650,6 +877,7 @@
             return true;
           });
 
+          // sorting
           const key = this.sortKey;
           const dir = this.sortDir === "desc" ? -1 : 1;
           this.filtered.sort((a,b)=>{
@@ -658,15 +886,18 @@
             return String(A).localeCompare(String(B)) * dir;
           });
 
+          // paginate
           this.page = 0;
           this.paginate();
 
+          // derive view metrics
           this.sevCountsFiltered = this.countSev(this.filtered);
           const hasFix = this.filtered.filter(r => (r.fixedVersions||[]).length).length;
           this.fixRateFiltered = this.filtered.length ? Math.round(100 * (hasFix/this.filtered.length)) : 0;
           this.perDatasetSev = this.groupByDatasetSev(this.filtered);
           this.filterSummary = this.buildFilterSummary();
 
+          // charts / analytics
           this.buildSeverityDonut();
           this.buildCvssSpark();
           this.buildTopComponents();
@@ -674,6 +905,7 @@
           this.buildDsFixRates();
           this.buildNoFixBars();
 
+          // refresh dropdown options
           this.updateSeverityOptions();
           this.persistToHash();
         },
@@ -688,6 +920,7 @@
         next(){ if (this.page+1 < this.pages){ this.page++; this.paginate(); this.persistToHash(); } },
         prev(){ if (this.page>0){ this.page--; this.paginate(); this.persistToHash(); } },
 
+        // helpers
         countSev(list){
           const out = {CRITICAL:0,HIGH:0,MEDIUM:0,LOW:0,INFO:0,UNKNOWN:0};
           for (const r of list){
@@ -713,14 +946,16 @@
           if (this.severity) bits.push(`severity=${this.severity}`);
           if (this.fix) bits.push(`fix=${this.fix}`);
           if (this.cvssMin) bits.push(`cvss≥${this.cvssMin}`);
+          if (this.onlyDirect) bits.push('onlyDirect');
           if (this.q) bits.push(`q="${this.q}"`);
           return bits.length ? `Active: ${bits.join(' · ')}` : 'No active filters';
         },
 
+        // CSV export
         exportCSV(){
           const rows = this.filtered;
           if (!rows.length) { alert("No rows to export."); return; }
-          const header = ["severity","cvss","component","version","purl","licenses","id","dataset","links"];
+          const header = ["severity","cvss","component","version","purl","licenses","id","dataset","links","direct"];
           const lines = [header.join(",")];
           for (const r of rows) {
             const csv = [
@@ -732,7 +967,8 @@
               (r.licenses||[]).join("|"),
               r.id ?? "",
               r.dataset ?? "",
-              (r.urls||[]).join("|")
+              (r.urls||[]).join("|"),
+              r.direct ? "yes" : "no"
             ].map(x => `"${String(x).replace(/"/g,'""')}"`).join(",");
             lines.push(csv);
           }
@@ -745,6 +981,7 @@
           URL.revokeObjectURL(url);
         },
 
+        // URL state
         persistToHash(){
           const h = new URLSearchParams({
             q: this.q || "",
@@ -754,6 +991,7 @@
             cvss: String(this.cvssMin || 0),
             dir: this.sortDir,
             key: this.sortKey,
+            dirc: this.onlyDirect ? "1" : "0",
             p: String(this.page)
           }).toString();
           location.hash = h;
@@ -767,17 +1005,21 @@
           this.cvssMin = Number(s.get("cvss") || this.cvssMin || 0);
           this.sortDir = s.get("dir") || this.sortDir;
           this.sortKey = s.get("key") || this.sortKey;
+          this.onlyDirect = s.get("dirc")==="1" ? true : this.onlyDirect;
           this.page = Number(s.get("p") || this.page || 0);
         },
 
+        // Top CVE helper
         applyTopCVE(id){ this.q = id || ""; this.applyFilters(true); },
 
+        // Reset helper (used by desktop button and mobile sheet)
         resetFilters(){
           this.q = "";
           this.dataset = "";
           this.severity = "";
           this.fix = "";
           this.cvssMin = 0;
+          this.onlyDirect = false;
           this.sortKey = "severityRank";
           this.sortDir = "desc";
           this.page = 0;
@@ -786,6 +1028,7 @@
           this.applyFilters(true);
         },
 
+        // tiny helpers for view save/load
         saveView(){ try{ localStorage.setItem('sbom_view', location.hash); alert('View saved.'); }catch{} },
         loadView(){ try{ const h = localStorage.getItem('sbom_view'); if(h){ location.hash=h; this.restoreFromHash(); this.applyFilters(true);} }catch{} }
       }
