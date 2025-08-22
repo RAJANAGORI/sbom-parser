@@ -482,14 +482,13 @@
         <table class="min-w-full text-sm responsive">
           <thead class="bg-[#2d3748]/60">
             <tr class="text-left">
-              <th class="px-4 py-3">Severity</th>
-              <th class="px-4 py-3">CVSS</th>
-              <th class="px-4 py-3">Component</th>
-              <th class="px-4 py-3">Version</th>
-              <th class="px-4 py-3">License</th>
-              <th class="px-4 py-3">Vuln ID</th>
-              <th class="px-4 py-3 w-40">Dataset</th>
-              <th class="px-4 py-3 w-40">Links</th>
+                             <th class="px-4 py-3">Severity</th>
+               <th class="px-4 py-3">CVSS</th>
+               <th class="px-4 py-3">Component</th>
+               <th class="px-4 py-3">Version</th>
+               <th class="px-4 py-3">License</th>
+               <th class="px-4 py-3">Vuln ID</th>
+               <th class="px-4 py-3 w-40">Dataset</th>
             </tr>
           </thead>
           <tbody>
@@ -520,17 +519,12 @@
                     <span>-</span>
                   </template>
                 </td>
-                <td class="px-4 py-2" :data-label="'Dataset'">
-                  <span class="text-xs px-2 py-1 bg-[#2d3748] rounded inline-flex items-center gap-1">
-                    <svg aria-hidden="true" viewBox="0 0 24 24" width="12" height="12" class="text-[#94a3b8]"><path fill="currentColor" d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6V4zm2 0v16h8a2 2 0 0 0 2-2V8l-6-4h-4z"/></svg>
-                    <span x-text="row.dataset"></span>
-                  </span>
-                </td>
-                <td class="px-4 py-2" :data-label="'Links'">
-                  <template x-for="(u,i) in (row.urls || [])" :key="row._key+'-url-'+i">
-                    <a class="text-blue-600 underline mr-2" :href="u" target="_blank" rel="noopener" x-text="`ref${i+1}`"></a>
-                  </template>
-                </td>
+                                 <td class="px-4 py-2" :data-label="'Dataset'">
+                   <span class="text-xs px-2 py-1 bg-[#2d3748] rounded inline-flex items-center gap-1">
+                     <svg aria-hidden="true" viewBox="0 0 24 24" width="12" height="12" class="text-[#94a3b8]"><path fill="currentColor" d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6V4zm2 0v16h8a2 2 0 0 0 2-2V8l-6-4h-4z"/></svg>
+                     <span x-text="row.dataset"></span>
+                   </span>
+                 </td>
               </tr>
             </template>
           </tbody>
@@ -945,7 +939,7 @@
         exportCSV(){
           const rows = this.filtered;
           if (!rows.length) { alert("No rows to export."); return; }
-          const header = ["severity","cvss","component","version","purl","licenses","id","dataset","links"];
+          const header = ["severity","cvss","component","version","purl","licenses","id","dataset"];
           const lines = [header.join(",")];
           for (const r of rows) {
             const csv = [
@@ -956,8 +950,7 @@
               r.purl ?? "",
               (r.licenses||[]).join("|"),
               r.id ?? "",
-              r.dataset ?? "",
-              (r.urls||[]).join("|")
+              r.dataset ?? ""
             ].map(x => `"${String(x).replace(/"/g,'""')}"`).join(",");
             lines.push(csv);
           }
