@@ -1,11 +1,8 @@
 #!/usr/bin/env node
 /**
- * Ephemeral download of Nightingale Action artifacts → unzip into ./sboms/<dataset>/
- * Reads artifact list from repo-root ./artifacts.json (not from sboms/manifest.json anymore).
- *
  * Env (set in GH Actions):
  *   TOKEN               - PAT with repo + actions:read on NIGHTINGALE_REPO (e.g., secrets.TOKEN_SBOM)
- *   NIGHTINGALE_OWNER   - default "sidbhasin13"
+ *   NIGHTINGALE_OWNER   - default "rajanagori"
  *   NIGHTINGALE_REPO    - default "nightingale"
  */
 import fs from "fs";
@@ -13,7 +10,7 @@ import path from "path";
 import { Octokit } from "@octokit/rest";
 import AdmZip from "adm-zip";
 
-const OWNER = process.env.NIGHTINGALE_OWNER || "sidbhasin13";
+const OWNER = process.env.NIGHTINGALE_OWNER || "rajanagori";
 const REPO  = process.env.NIGHTINGALE_REPO  || "nightingale";
 const TOKEN = process.env.TOKEN;
 
@@ -56,7 +53,6 @@ async function findNewestArtifactByName(name) {
   return newest;
 }
 
-// IMPORTANT: download without Authorization header to the Azure blob SAS URL
 async function downloadZip(artifactId, outFile) {
   const resp = await octokit.request(
     "GET /repos/{owner}/{repo}/actions/artifacts/{artifact_id}/{archive_format}",
