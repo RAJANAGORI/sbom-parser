@@ -11,4 +11,5 @@ This small Node.js script ingests a CycloneDX SBOM JSON and spits out a standalo
 
 UI
 ---
-<img width="3420" height="2280" alt="image" src="https://github.com/user-attachments/assets/8f4706ca-ae00-41d2-a72b-41f24b1c0b0e" />
+
+<img width="3418" height="1694" alt="Screenshot 2025-08-26 at 6 19 35 PM" src="https://github.com/user-attachments/assets/15ea9489-4524-4555-a4d0-8101c3cf5ff6" />
