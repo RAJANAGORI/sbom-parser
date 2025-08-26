@@ -1,0 +1,72 @@
+name: Sync SBOMs & Build UI
+
+on:
+  # Triggered by Nightingale when Trivy completes
+  repository_dispatch:
+    types: [nightingale-trivy-complete]
+
+  # Run monthly at 10:30 UTC on the 1st
+  # Nightingale runs at 10:00 → we pull 30 min later
+  schedule:
+    - cron: "30 10 1 * *"
+
+  # Manual
+  workflow_dispatch: {}
+
+permissions:
+  actions: read         # read artifacts in the Nightingale repo
+  contents: read        # read this repo
+  pages: write          # publish to Pages
+  id-token: write       # auth for Pages
+
+concurrency:
+  group: "pages"
+
+jobs:
+  sync_build:
+    runs-on: ubuntu-latest
+    env:
+      # Always use main branch for both repos
+      TARGET_BRANCH: main
+      # Where to pull artifacts from (your Nightingale repo)
+      NIGHTINGALE_OWNER: rajanagori
+      NIGHTINGALE_REPO: nightingale
+    steps:
+      - name: Checkout main branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install deps
+        run: npm ci || npm i --no-audit --no-fund
+
+      - name: Sync SBOM artifacts from Nightingale main branch
+        env:
+          TOKEN: ${{ secrets.TOKEN_SBOM }}
+          NIGHTINGALE_OWNER: ${{ env.NIGHTINGALE_OWNER }}
+          NIGHTINGALE_REPO: ${{ env.NIGHTINGALE_REPO }}
+        run: npm run sync:sboms
+
+      - name: Build snapshot
+        run: npm run build:snapshot
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+  deploy:
+    needs: sync_build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
