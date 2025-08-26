@@ -11,4 +11,4 @@ This small Node.js script ingests a CycloneDX SBOM JSON and spits out a standalo
 
 UI
 ---
-<img width="3420" height="2796" alt="screencapture-file-Users-rajanagori-Documents-vault-Projects-sbom-parser-index-html-2025-08-05-05_19_34" src="https://github.com/user-attachments/assets/2464c384-55ab-403f-a6a4-cdc2ee3ffdd2" />
+<img width="3420" height="2280" alt="image" src="https://github.com/user-attachments/assets/8f4706ca-ae00-41d2-a72b-41f24b1c0b0e" />
