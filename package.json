@@ -12,6 +12,6 @@
   "dependencies": {
     "@octokit/rest": "20.1.2",
     "adm-zip": "^0.5.10",
-    "glob": "10.4.5"
+    "glob": "12.0.0"
   }
 }
