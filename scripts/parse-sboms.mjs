@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * @fileoverview Build parse-sboms.json from CycloneDX files found under ./sboms/*/*.cyclonedx.json
+ * @fileoverview Build parse-sboms.json from CycloneDX files found under sboms directory
  * @module parse-sboms
  */
 
