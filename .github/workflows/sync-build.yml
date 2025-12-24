@@ -86,6 +86,10 @@ jobs:
           cp parse-sboms.json pages-build/
           cp artifacts.json pages-build/
           
+          # Copy scripts directory (contains security.js)
+          mkdir -p pages-build/scripts
+          cp scripts/security.js pages-build/scripts/
+          
           # Copy CNAME if it exists (for custom domain)
           if [ -f CNAME ]; then
             cp CNAME pages-build/
@@ -101,14 +105,23 @@ jobs:
           # Verify all required files exist
           echo "=== Verifying deployment files ==="
           required_files=("index.html" "app.js" "styles.css" "parse-sboms.json" "artifacts.json" "scripts/security.js")
+          all_present=true
           for file in "${required_files[@]}"; do
             if [ -f "pages-build/$file" ]; then
-              echo "✓ $file"
+              echo "✓ $file ($(du -h "pages-build/$file" | cut -f1))"
             else
               echo "✗ MISSING: $file"
-              exit 1
+              all_present=false
             fi
           done
+          
+          if [ "$all_present" = false ]; then
+            echo ""
+            echo "ERROR: Some required files are missing!"
+            echo "Files in pages-build/:"
+            find pages-build -type f | sort
+            exit 1
+          fi
           
           # Show file sizes
           echo ""

@@ -283,10 +283,40 @@ function app() {
 
       async init() {
         try {
-          const snap = await fetch("./parse-sboms.json?_=" + Date.now()).then(r => {
-            if (!r.ok) throw new Error(`Failed to load data: ${r.status} ${r.statusText}`);
-            return r.json();
-          });
+          // Try multiple paths for parse-sboms.json
+          const paths = [
+            "./parse-sboms.json",
+            "parse-sboms.json", 
+            "/parse-sboms.json",
+            window.location.pathname.replace(/\/[^/]*$/, '/') + 'parse-sboms.json'
+          ];
+          let snap = null;
+          let lastError = null;
+          let triedPaths = [];
+          
+          for (const path of paths) {
+            triedPaths.push(path);
+            try {
+              const response = await fetch(`${path}?_=${Date.now()}`);
+              if (response.ok) {
+                snap = await response.json();
+                console.log(`✓ Loaded parse-sboms.json from: ${path}`);
+                break;
+              } else {
+                console.warn(`✗ Failed to load from ${path}: ${response.status} ${response.statusText}`);
+              }
+            } catch (err) {
+              lastError = err;
+              console.warn(`✗ Error loading from ${path}:`, err.message);
+              continue;
+            }
+          }
+          
+          if (!snap) {
+            const errorMsg = `Failed to load parse-sboms.json from any path. Tried: ${triedPaths.join(', ')}. Last error: ${lastError?.message || 'All paths returned non-OK status'}`;
+            console.error(errorMsg);
+            throw new Error(errorMsg);
+          }
           
           // Validate data structure
           if (!window.SecurityUtils || !window.SecurityUtils.validateSBOMData(snap)) {

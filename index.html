@@ -8,7 +8,8 @@
   <meta name="color-scheme" content="light dark" />
   <!-- Content Security Policy: Allow CDN scripts and inline styles (required for Tailwind/Alpine) -->
   <!-- Note: 'unsafe-eval' is required for Alpine.js, 'unsafe-inline' for Tailwind CDN -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.tailwindcss.com https://cdn.jsdelivr.net 'unsafe-eval'; style-src 'self' https://cdn.tailwindcss.com https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data: https:; frame-src 'none'; base-uri 'self'; form-action 'self'; object-src 'none';" />
+  <!-- Content Security Policy: Allow CDN scripts, blob URLs for downloads, and required inline execution -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.tailwindcss.com https://cdn.jsdelivr.net 'unsafe-eval' blob:; script-src-elem 'self' https://cdn.tailwindcss.com https://cdn.jsdelivr.net blob:; style-src 'self' https://cdn.tailwindcss.com https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data: https:; frame-src 'none'; base-uri 'self'; form-action 'self'; object-src 'none';" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="./scripts/security.js"></script>
   <link rel="stylesheet" href="./styles.css">
