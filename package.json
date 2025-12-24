@@ -7,11 +7,19 @@
     "sync:sboms": "node scripts/fetch-artifacts.mjs",
     "build:snapshot": "node scripts/parse-sboms.mjs",
     "build": "npm run sync:sboms && npm run build:snapshot",
-    "serve": "npx serve -s . -p 8080"
+    "serve": "npx serve -s . -p 8080",
+    "test": "vitest",
+    "test:coverage": "vitest --coverage",
+    "test:ui": "vitest --ui"
   },
   "dependencies": {
     "@octokit/rest": "20.1.2",
     "adm-zip": "^0.5.10",
     "glob": "13.0.0"
+  },
+  "devDependencies": {
+    "vitest": "^1.0.0",
+    "@vitest/ui": "^1.0.0",
+    "@vitest/coverage-v8": "^1.0.0"
   }
 }

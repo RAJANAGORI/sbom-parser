@@ -140,3 +140,9 @@ vite.config.ts.timestamp-*
 
 .DS_Store
 Thumbs.db
+
+# SBOM Parser specific
+sboms/              # Downloaded SBOM files (ephemeral)
+*.zip               # Temporary artifact downloads
+pages-build/        # GitHub Pages build directory
+parse-sboms.json    # Generated snapshot (will be generated in CI)

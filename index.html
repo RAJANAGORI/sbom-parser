@@ -6,15 +6,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>SBOM Explorer</title>
   <meta name="color-scheme" content="light dark" />
+  <!-- Content Security Policy: Allow CDN scripts and inline styles (required for Tailwind/Alpine) -->
+  <!-- Note: 'unsafe-eval' is required for Alpine.js, 'unsafe-inline' for Tailwind CDN -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.tailwindcss.com https://cdn.jsdelivr.net 'unsafe-eval'; style-src 'self' https://cdn.tailwindcss.com https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data: https:; frame-src 'none'; base-uri 'self'; form-action 'self'; object-src 'none';" />
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="./scripts/security.js"></script>
+  <link rel="stylesheet" href="./styles.css">
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
-
-  <style>
-    .card {
-      @apply bg-[#1a1f2e] border border-[#2d3748] rounded-2xl shadow-sm p-4;
-    }
-
-    .muted {
+  <script src="./app.js"></script>
       @apply text-xs text-[#94a3b8];
     }
 
@@ -409,9 +408,6 @@
         background-repeat: no-repeat !important;
         background-size: 16px !important;
         padding-right: 40px !important;
-      }
-    }
-  </style>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
@@ -986,9 +982,6 @@
     </div>
     </div>
   </main>
-
-  <script>
-    function app() {
       return {
         items: [],
         filtered: [],
@@ -1020,6 +1013,9 @@
         showSuggest: false,
         selIdx: -1,
         _suggestTimer: null,
+        _exportLastTime: 0,
+        _exportCount: 0,
+        _exportResetTime: 0,
 
         hideSuggest() { this.showSuggest = false; this.selIdx = -1; },
         moveSel(step) {
@@ -1038,7 +1034,9 @@
           this.$nextTick(() => this.$refs.search?.focus());
         },
         onInput(e) {
-          this.q = e.target.value;
+          // Sanitize search input
+          const raw = e.target.value;
+          this.q = window.SecurityUtils ? window.SecurityUtils.sanitizeSearchQuery(raw) : raw;
           this.applyFilters(true);
           clearTimeout(this._suggestTimer);
           const val = this.q.trim();
@@ -1227,14 +1225,44 @@
         },
 
         async init() {
-          const snap = await fetch("./parse-sboms.json?_=" + Date.now()).then(r => r.json());
-          this.items = (snap.items || []).map((r, idx) => ({ ...r, _key: (r.dataset || 'ds') + '::' + (r.id || (r.component || 'comp') + '@' + (r.version || '')) + '::' + idx }));
-          this.datasets = (snap.datasets || [])
-            .map((d, i) => ({ ...d, _key: 'ds-' + (d.id || i) }))
-            .sort((a, b) => String(a.id).localeCompare(String(b.id)));
-          this.overall = snap.overall || this.overall;
-          this.metrics = snap.metrics || this.metrics;
-          this.metaText = snap.generatedAt ? `updated ${new Date(snap.generatedAt).toLocaleString()}` : '';
+          try {
+            const snap = await fetch("./parse-sboms.json?_=" + Date.now()).then(r => {
+              if (!r.ok) throw new Error(`Failed to load data: ${r.status} ${r.statusText}`);
+              return r.json();
+            });
+            
+            // Validate data structure
+            if (!window.SecurityUtils || !window.SecurityUtils.validateSBOMData(snap)) {
+              throw new Error('Invalid data structure received');
+            }
+            
+            // Sanitize items before processing
+            this.items = (snap.items || []).map((r, idx) => {
+              const sanitized = window.SecurityUtils.sanitizeObject(r);
+              return { ...sanitized, _key: (sanitized.dataset || 'ds') + '::' + (sanitized.id || (sanitized.component || 'comp') + '@' + (sanitized.version || '')) + '::' + idx };
+            });
+            
+            this.datasets = (snap.datasets || [])
+              .map((d, i) => {
+                const sanitized = window.SecurityUtils.sanitizeObject(d);
+                return { ...sanitized, _key: 'ds-' + (sanitized.id || i) };
+              })
+              .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+            
+            this.overall = snap.overall || this.overall;
+            this.metrics = snap.metrics || this.metrics;
+            this.metaText = snap.generatedAt ? `updated ${new Date(snap.generatedAt).toLocaleString()}` : '';
+          } catch (error) {
+            console.error('Failed to initialize:', error);
+            this.items = [];
+            this.datasets = [];
+            this.metaText = 'Error loading data. Please refresh the page.';
+            // Show user-friendly error
+            setTimeout(() => {
+              alert('Failed to load SBOM data. Please check the console for details and refresh the page.');
+            }, 100);
+            return;
+          }
 
           this.restoreFromHash();
           this.updateSeverityOptions();
@@ -1280,6 +1308,18 @@
         },
 
         applyFilters(buildGroup = false) {
+          // Validate and sanitize filter inputs
+          const utils = window.SecurityUtils;
+          if (utils) {
+            this.q = utils.sanitizeSearchQuery(this.q);
+            this.dataset = utils.validateDatasetId(this.dataset);
+            this.severity = utils.validateSeverity(this.severity);
+            this.fix = utils.validateFixFilter(this.fix);
+            this.cvssMin = utils.validateCVSS(this.cvssMin);
+            this.sortKey = utils.validateSortKey(this.sortKey);
+            this.sortDir = utils.validateSortDir(this.sortDir);
+          }
+          
           const q = this.q.trim().toLowerCase();
           const sev = this.severity, fix = this.fix, cv = Number(this.cvssMin) || 0, ds = this.dataset;
           this.filtered = this.items.filter(r => {
@@ -1370,20 +1410,48 @@
         },
 
         exportCSV() {
+          // Rate limiting: max 10 exports per minute
+          const now = Date.now();
+          const oneMinute = 60000;
+          
+          if (this._exportResetTime < now - oneMinute) {
+            this._exportCount = 0;
+            this._exportResetTime = now;
+          }
+          
+          if (this._exportCount >= 10) {
+            const waitTime = Math.ceil((this._exportResetTime + oneMinute - now) / 1000);
+            alert(`Export rate limit exceeded. Please wait ${waitTime} seconds before exporting again.`);
+            return;
+          }
+          
           const rows = this.filtered;
           if (!rows.length) { alert("No rows to export."); return; }
+          
+          // Limit export size to prevent memory issues (max 50k rows)
+          const exportRows = rows.slice(0, 50000);
+          if (rows.length > 50000) {
+            if (!confirm(`Large dataset detected (${rows.length} rows). Exporting first 50,000 rows only. Continue?`)) {
+              return;
+            }
+          }
+          
+          this._exportCount++;
+          this._exportLastTime = now;
+          
           const header = ["severity", "cvss", "component", "version", "purl", "licenses", "id", "dataset"];
           const lines = [header.join(",")];
-          for (const r of rows) {
+          for (const r of exportRows) {
+            // Sanitize CSV values
             const csv = [
-              r.severity ?? "",
+              (r.severity ?? "").replace(/"/g, '""'),
               r.cvss ?? "",
-              r.component ?? "",
-              r.version ?? "",
-              r.purl ?? "",
-              (r.licenses || []).join("|"),
-              r.id ?? "",
-              r.dataset ?? ""
+              (r.component ?? "").replace(/"/g, '""'),
+              (r.version ?? "").replace(/"/g, '""'),
+              (r.purl ?? "").replace(/"/g, '""'),
+              ((r.licenses || []).join("|")).replace(/"/g, '""'),
+              (r.id ?? "").replace(/"/g, '""'),
+              (r.dataset ?? "").replace(/"/g, '""')
             ].map(x => `"${String(x).replace(/"/g, '""')}"`).join(",");
             lines.push(csv);
           }
@@ -1411,17 +1479,34 @@
         },
         restoreFromHash() {
           const s = new URLSearchParams(location.hash.replace(/^#/, ""));
-          this.q = s.get("q") || this.q;
-          this.dataset = s.get("ds") || this.dataset;
-          this.severity = s.get("sev") || this.severity;
-          this.fix = s.get("fix") || this.fix;
-          this.cvssMin = Number(s.get("cvss") || this.cvssMin || 0);
-          this.sortDir = s.get("dir") || this.sortDir;
-          this.sortKey = s.get("key") || this.sortKey;
-          this.page = Number(s.get("p") || this.page || 0);
+          const utils = window.SecurityUtils;
+          if (utils) {
+            this.q = utils.sanitizeSearchQuery(s.get("q") || this.q);
+            this.dataset = utils.validateDatasetId(s.get("ds") || this.dataset);
+            this.severity = utils.validateSeverity(s.get("sev") || this.severity);
+            this.fix = utils.validateFixFilter(s.get("fix") || this.fix);
+            this.cvssMin = utils.validateCVSS(s.get("cvss") || this.cvssMin || 0);
+            this.sortDir = utils.validateSortDir(s.get("dir") || this.sortDir);
+            this.sortKey = utils.validateSortKey(s.get("key") || this.sortKey);
+            this.page = utils.validatePage(s.get("p") || this.page || 0, 1000); // Max 1000 pages
+          } else {
+            // Fallback if security utils not loaded
+            this.q = s.get("q") || this.q;
+            this.dataset = s.get("ds") || this.dataset;
+            this.severity = s.get("sev") || this.severity;
+            this.fix = s.get("fix") || this.fix;
+            this.cvssMin = Number(s.get("cvss") || this.cvssMin || 0);
+            this.sortDir = s.get("dir") || this.sortDir;
+            this.sortKey = s.get("key") || this.sortKey;
+            this.page = Number(s.get("p") || this.page || 0);
+          }
         },
 
-        applyTopCVE(id) { this.q = id || ""; this.applyFilters(true); },
+        applyTopCVE(id) { 
+          const utils = window.SecurityUtils;
+          this.q = utils ? utils.sanitizeSearchQuery(id || "") : (id || ""); 
+          this.applyFilters(true); 
+        },
 
         resetFilters() {
           this.q = "";
@@ -1508,10 +1593,6 @@
           } else {
             table.classList.remove('compact-table');
           }
-        }
-      }
-    }
-  </script>
 </body>
 
 </html>
