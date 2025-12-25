@@ -138,12 +138,39 @@ function app() {
         const pct = Math.max(0, Math.min(100, this.fixRateFiltered)) / 100;
         return this.ringCircumference * (1 - pct);
       },
-      get ringColor() {
-        const p = this.fixRateFiltered;
-        if (p >= 67) return '#10b981';
-        if (p >= 33) return '#f59e0b';
-        return '#ef4444';
-      },
+        get ringColor() {
+          const p = this.fixRateFiltered;
+          if (p >= 67) return '#10b981';
+          if (p >= 33) return '#f59e0b';
+          return '#ef4444';
+        },
+        
+        get riskScore() {
+          // Calculate overall risk score based on severity distribution and CVSS scores
+          const counts = this.sevCountsFiltered || {};
+          const total = this.filtered.length || 1;
+          
+          // Weighted severity scores
+          const criticalWeight = (counts.CRITICAL || 0) * 100;
+          const highWeight = (counts.HIGH || 0) * 70;
+          const mediumWeight = (counts.MEDIUM || 0) * 40;
+          const lowWeight = (counts.LOW || 0) * 10;
+          
+          // Average CVSS score contribution (0-100 scale)
+          const cvssScores = this.filtered
+            .map(r => typeof r.cvss === 'number' ? r.cvss : null)
+            .filter(v => v != null);
+          const avgCVSS = cvssScores.length > 0 
+            ? cvssScores.reduce((a, b) => a + b, 0) / cvssScores.length 
+            : 0;
+          const cvssContribution = (avgCVSS / 10) * 100;
+          
+          // Calculate weighted risk score (0-100)
+          const severityScore = (criticalWeight + highWeight + mediumWeight + lowWeight) / total;
+          const riskScore = Math.min(100, (severityScore * 0.7 + cvssContribution * 0.3));
+          
+          return Math.round(riskScore);
+        },
 
       donutSegs: {
         CRITICAL: { dash: '0 1000', offset: 0, color: '#dc2626', count: 0 },
