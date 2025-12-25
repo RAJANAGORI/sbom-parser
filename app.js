@@ -28,7 +28,7 @@ function app() {
       sortKey: "severityRank",
       sortDir: "desc",
       page: 0,
-      perPage: (matchMedia('(max-width: 640px)').matches ? 20 : 50),
+      perPage: 10, // Fixed to 10 items per page for better UX
       pages: 0,
       metaText: "",
 
@@ -765,15 +765,8 @@ function app() {
           availableWidth = width - (width >= 1280 ? 512 : 448);
         }
 
-        if (width < 640) {
-          this.perPage = 20;
-        } else if (width < 1024) {
-          this.perPage = isSidebarOpen ? 30 : 40;
-        } else if (width < 1280) {
-          this.perPage = isSidebarOpen ? 40 : 50;
-        } else {
-          this.perPage = isSidebarOpen ? 45 : 60;
-        }
+          // Fixed to 10 items per page for consistent UX across all screen sizes
+          this.perPage = 10;
 
         this.updateGridLayout(availableWidth);
 
