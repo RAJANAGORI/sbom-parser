@@ -10,8 +10,14 @@ on:
   schedule:
     - cron: "30 10 1 * *"
 
-  # Manual
-  workflow_dispatch: {}
+  # Manual - with branch selection
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to build and deploy'
+        required: true
+        default: 'main'
+        type: string
 
 permissions:
   actions: read         # read artifacts in the Nightingale repo
@@ -26,16 +32,25 @@ jobs:
   sync_build:
     runs-on: ubuntu-latest
     env:
-      # Always use main branch for both repos
-      TARGET_BRANCH: main
       # Where to pull artifacts from (your Nightingale repo)
       NIGHTINGALE_OWNER: rajanagori
       NIGHTINGALE_REPO: nightingale
     steps:
-      - name: Checkout main branch
+      - name: Determine branch to use
+        id: branch
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "branch=${{ github.event.inputs.branch }}" >> $GITHUB_OUTPUT
+            echo "Using manually selected branch: ${{ github.event.inputs.branch }}"
+          else
+            echo "branch=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "Using trigger branch: ${{ github.ref_name }}"
+          fi
+      
+      - name: Checkout selected branch
         uses: actions/checkout@v6
         with:
-          ref: main
+          ref: ${{ steps.branch.outputs.branch }}
           fetch-depth: 0
 
       - name: Setup Node
@@ -46,20 +61,84 @@ jobs:
       - name: Install deps
         run: npm ci || npm i --no-audit --no-fund
 
-      - name: Sync SBOM artifacts from Nightingale main branch
+      - name: Build (sync SBOMs + generate snapshot)
         env:
           TOKEN: ${{ secrets.TOKEN_SBOM }}
           NIGHTINGALE_OWNER: ${{ env.NIGHTINGALE_OWNER }}
           NIGHTINGALE_REPO: ${{ env.NIGHTINGALE_REPO }}
-        run: npm run sync:sboms
+        run: npm run build
 
-      - name: Build snapshot
-        run: npm run build:snapshot
+      - name: Prepare Pages files
+        run: |
+          # Create a clean directory for Pages deployment
+          mkdir -p pages-build
+          
+          # Verify parse-sboms.json was generated
+          if [ ! -f parse-sboms.json ]; then
+            echo "ERROR: parse-sboms.json not found after build!"
+            exit 1
+          fi
+          
+          # Copy essential files for GitHub Pages
+          cp index.html pages-build/
+          cp app.js pages-build/
+          cp styles.css pages-build/
+          cp parse-sboms.json pages-build/
+          cp artifacts.json pages-build/
+          
+          # Copy scripts directory (contains security.js)
+          mkdir -p pages-build/scripts
+          cp scripts/security.js pages-build/scripts/
+          
+          # Copy CNAME if it exists (for custom domain)
+          if [ -f CNAME ]; then
+            cp CNAME pages-build/
+          fi
+          
+          # Copy scripts directory (for security.js and worker)
+          mkdir -p pages-build/scripts
+          cp scripts/security.js pages-build/scripts/
+          if [ -f scripts/worker-filter.mjs ]; then
+            cp scripts/worker-filter.mjs pages-build/scripts/
+          fi
+          
+          # Verify all required files exist
+          echo "=== Verifying deployment files ==="
+          required_files=("index.html" "app.js" "styles.css" "parse-sboms.json" "artifacts.json" "scripts/security.js")
+          all_present=true
+          for file in "${required_files[@]}"; do
+            if [ -f "pages-build/$file" ]; then
+              echo "✓ $file ($(du -h "pages-build/$file" | cut -f1))"
+            else
+              echo "✗ MISSING: $file"
+              all_present=false
+            fi
+          done
+          
+          if [ "$all_present" = false ]; then
+            echo ""
+            echo "ERROR: Some required files are missing!"
+            echo "Files in pages-build/:"
+            find pages-build -type f | sort
+            exit 1
+          fi
+          
+          # Show file sizes
+          echo ""
+          echo "=== Deployment file sizes ==="
+          find pages-build -type f -exec ls -lh {} \; | awk '{print $5, $9}'
+          
+          # Show parse-sboms.json info
+          echo ""
+          echo "=== parse-sboms.json info ==="
+          ls -lh pages-build/parse-sboms.json
+          echo "JSON validity check:"
+          node -e "JSON.parse(require('fs').readFileSync('pages-build/parse-sboms.json', 'utf8')); console.log('✓ Valid JSON')" || exit 1
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: pages-build
 
   deploy:
     needs: sync_build
