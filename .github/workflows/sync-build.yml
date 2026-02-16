@@ -136,7 +136,7 @@ jobs:
           node -e "JSON.parse(require('fs').readFileSync('pages-build/parse-sboms.json', 'utf8')); console.log('✓ Valid JSON')" || exit 1
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: pages-build
 
