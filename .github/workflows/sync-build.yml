@@ -16,7 +16,7 @@ on:
       branch:
         description: 'Branch to build and deploy'
         required: true
-        default: 'main'
+        default: 'sbom-parser'
         type: string
 
 permissions:
@@ -58,7 +58,7 @@ jobs:
             echo "branch=sbom-parser" >> $GITHUB_OUTPUT
             echo "Using fixed branch: sbom-parser"
           fi
-          
+
       - name: Checkout selected branch
         uses: actions/checkout@v6
         with:
