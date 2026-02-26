@@ -1,8 +1,4 @@
 {
-  "artifacts": [
-    { "name": "trivy-scan-results-ghcr_io_rajanagori_nightingale_stable",         "dataset": "stable" },
-    { "name": "trivy-scan-results-ghcr_io_rajanagori_nightingale_arm64",          "dataset": "arm64" },
-    { "name": "trivy-scan-results-ghcr_io_rajanagori_nightingale_backend_amd64",  "dataset": "backend-amd64" },
-    { "name": "trivy-scan-results-ghcr_io_rajanagori_nightingale_frontend_amd64", "dataset": "frontend-amd64" }
-  ]
+  "autoDiscover": true,
+  "prefix": "trivy-scan-results-ghcr_io_rajanagori_nightingale_"
 }
