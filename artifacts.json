@@ -1,4 +1,5 @@
 {
   "autoDiscover": true,
-  "prefix": "trivy-scan-results-ghcr_io_rajanagori_nightingale_"
+  "prefix": "trivy-scan-results-ghcr_io_rajanagori_nightingale_",
+  "workflowFile": "trivy.yml"
 }
