@@ -16,7 +16,7 @@ on:
       branch:
         description: 'Branch to build and deploy'
         required: true
-        default: 'sbom-parser'
+        default: 'main'
         type: string
 
 permissions:
@@ -36,17 +36,29 @@ jobs:
       NIGHTINGALE_OWNER: rajanagori
       NIGHTINGALE_REPO: nightingale
     steps:
+      # - name: Determine branch to use
+      #   id: branch
+      #   run: |
+      #     if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+      #       echo "branch=${{ github.event.inputs.branch }}" >> $GITHUB_OUTPUT
+      #       echo "Using manually selected branch: ${{ github.event.inputs.branch }}"
+      #     else
+      #       echo "branch=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+      #       echo "Using trigger branch: ${{ github.ref_name }}"
+      #     fi
       - name: Determine branch to use
         id: branch
         run: |
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            # Manual runs can choose any branch (default: sbom-parser)
             echo "branch=${{ github.event.inputs.branch }}" >> $GITHUB_OUTPUT
             echo "Using manually selected branch: ${{ github.event.inputs.branch }}"
           else
-            echo "branch=${{ github.ref_name }}" >> $GITHUB_OUTPUT
-            echo "Using trigger branch: ${{ github.ref_name }}"
+            # For repository_dispatch and schedule, always use sbom-parser
+            echo "branch=sbom-parser" >> $GITHUB_OUTPUT
+            echo "Using fixed branch: sbom-parser"
           fi
-      
+          
       - name: Checkout selected branch
         uses: actions/checkout@v6
         with:
