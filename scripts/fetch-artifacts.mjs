@@ -35,11 +35,12 @@ const SBOMS_DIR = path.join(ROOT, "sboms"); // ephemeral workspace folder
 const ARTIFACTS_JSON = path.join(ROOT, "artifacts.json");
 
 /**
- * Reads and validates the artifacts.json configuration file
- * @returns {Array<{name: string, dataset: string}>} Array of artifact configurations
+ * Reads and validates the artifacts.json configuration file (raw config)
+ * Does NOT perform any GitHub calls or auto-discovery.
+ * @returns {object} Parsed configuration object
  * @throws {Error} If file is missing, empty, or has invalid structure
  */
-function readArtifactsList() {
+function readArtifactsConfig() {
   try {
     if (!fs.existsSync(ARTIFACTS_JSON)) {
       throw new Error(`Missing ${ARTIFACTS_JSON}.`);
@@ -54,20 +55,155 @@ function readArtifactsList() {
     } catch (parseError) {
       throw new Error(`Invalid JSON in ${ARTIFACTS_JSON}: ${parseError.message}`);
     }
-    if (!j || typeof j !== 'object') {
+    if (!j || typeof j !== "object") {
       throw new Error(`${ARTIFACTS_JSON} must contain a JSON object.`);
     }
-    if (!Array.isArray(j.artifacts)) {
-      throw new Error("artifacts.json: 'artifacts' must be an array.");
-    }
-    if (j.artifacts.length === 0) {
-      console.warn("Warning: artifacts.json contains an empty artifacts array.");
-    }
-    return j.artifacts;
+    return j;
   } catch (error) {
-    console.error(`Error reading artifacts list: ${error.message}`);
+    console.error(`Error reading artifacts config: ${error.message}`);
     process.exit(1);
   }
+}
+
+/**
+ * Auto-discovers artifacts from GitHub Actions based on a naming convention.
+ * This removes the need to manually list every artifact in artifacts.json.
+ *
+ * Expected config shape (in artifacts.json):
+ * {
+ *   "autoDiscover": true,
+ *   "prefix": "trivy-scan-results-ghcr_io_rajanagori_nightingale_"
+ * }
+ *
+ * @param {object} cfg - Parsed artifacts.json config
+ * @returns {Promise<Array<{name: string, dataset: string}>>}
+ */
+async function autoDiscoverArtifacts(cfg) {
+  const prefix =
+    typeof cfg.prefix === "string" && cfg.prefix.trim().length > 0
+      ? cfg.prefix.trim()
+      : "trivy-scan-results-";
+
+  // Require a specific workflow file so we ONLY process artifacts
+  // coming from that Trivy workflow's latest run.
+  if (typeof cfg.workflowFile !== "string" || !cfg.workflowFile.trim()) {
+    throw new Error(
+      "artifacts.json must define 'workflowFile' when autoDiscover is true so that only Trivy scan artifacts are processed."
+    );
+  }
+
+  const workflowFile = cfg.workflowFile.trim();
+  let workflowRunIdFilter = null;
+  try {
+    const { data } = await octokit.actions.listWorkflowRuns({
+      owner: OWNER,
+      repo: REPO,
+      workflow_id: workflowFile,
+      per_page: 1,
+    });
+    const latest = data?.workflow_runs?.[0];
+    if (!latest) {
+      throw new Error(
+        `No workflow runs found for workflow file "${workflowFile}".`
+      );
+    }
+    workflowRunIdFilter = latest.id;
+    console.log(
+      `Restricting auto-discovery to artifacts from workflow "${workflowFile}" latest run #${latest.run_number} (id ${latest.id}).`
+    );
+  } catch (e) {
+    throw new Error(
+      `Failed to resolve latest workflow run for "${workflowFile}": ${e.message}`
+    );
+  }
+
+  console.log(
+    `Auto-discovering artifacts from ${OWNER}/${REPO} with prefix "${prefix}"...`
+  );
+
+  const byName = new Map();
+  let page = 1;
+
+  for (;;) {
+    const { data } = await octokit.actions.listArtifactsForRepo({
+      owner: OWNER,
+      repo: REPO,
+      per_page: 100,
+      page,
+    });
+
+    if (!data || !Array.isArray(data.artifacts)) {
+      throw new Error(
+        "Invalid response from GitHub API while auto-discovering artifacts"
+      );
+    }
+
+    const arr = data.artifacts || [];
+    for (const a of arr) {
+      if (!a || typeof a.name !== "string") continue;
+      if (!a.name.startsWith(prefix)) continue;
+      if (a.expired) continue;
+      if (
+        workflowRunIdFilter &&
+        (!a.workflow_run || a.workflow_run.id !== workflowRunIdFilter)
+      ) {
+        continue;
+      }
+
+      const existing = byName.get(a.name);
+      if (!existing || new Date(a.created_at) > new Date(existing.created_at)) {
+        const dataset = a.name.slice(prefix.length) || a.name;
+        byName.set(a.name, { name: a.name, dataset });
+      }
+    }
+
+    if (arr.length < 100) break;
+    page++;
+    if (page > 100) {
+      console.warn(
+        "Warning: Reached page limit (100) while auto-discovering artifacts."
+      );
+      break;
+    }
+  }
+
+  const items = Array.from(byName.values());
+  if (!items.length) {
+    console.warn(
+      "Warning: Auto-discovery did not find any matching artifacts. Check prefix, workflowFile, and repository settings."
+    );
+  } else {
+    console.log(
+      `Auto-discovered ${items.length} artifact(s): ${items
+        .map((i) => `${i.name} → dataset "${i.dataset}"`)
+        .join(", ")}`
+    );
+  }
+
+  return items;
+}
+
+/**
+ * Resolves the list of artifacts to process, either from explicit config
+ * (artifacts array) or via auto-discovery if enabled.
+ * @returns {Promise<Array<{name: string, dataset: string}>>}
+ */
+async function resolveArtifactsList() {
+  const cfg = readArtifactsConfig();
+
+  // Auto-discovery path
+  if (cfg.autoDiscover === true) {
+    return await autoDiscoverArtifacts(cfg);
+  }
+
+  // Backwards-compatible explicit configuration path
+  if (!Array.isArray(cfg.artifacts)) {
+    throw new Error("artifacts.json: 'artifacts' must be an array.");
+  }
+  if (cfg.artifacts.length === 0) {
+    console.warn("Warning: artifacts.json contains an empty artifacts array.");
+  }
+  return cfg.artifacts;
 }
 
 /**
@@ -233,7 +369,7 @@ async function main() {
   const errors = [];
 
   try {
-    const items = readArtifactsList();
+    const items = await resolveArtifactsList();
     if (!fs.existsSync(SBOMS_DIR)) {
       fs.mkdirSync(SBOMS_DIR, { recursive: true });
     }
