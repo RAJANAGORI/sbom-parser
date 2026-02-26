@@ -84,6 +84,39 @@ async function autoDiscoverArtifacts(cfg) {
       ? cfg.prefix.trim()
       : "trivy-scan-results-";
 
+  // Require a specific workflow file so we ONLY process artifacts
+  // coming from that Trivy workflow's latest run.
+  if (typeof cfg.workflowFile !== "string" || !cfg.workflowFile.trim()) {
+    throw new Error(
+      "artifacts.json must define 'workflowFile' when autoDiscover is true so that only Trivy scan artifacts are processed."
+    );
+  }
+
+  const workflowFile = cfg.workflowFile.trim();
+  let workflowRunIdFilter = null;
+  try {
+    const { data } = await octokit.actions.listWorkflowRuns({
+      owner: OWNER,
+      repo: REPO,
+      workflow_id: workflowFile,
+      per_page: 1,
+    });
+    const latest = data?.workflow_runs?.[0];
+    if (!latest) {
+      throw new Error(
+        `No workflow runs found for workflow file "${workflowFile}".`
+      );
+    }
+    workflowRunIdFilter = latest.id;
+    console.log(
+      `Restricting auto-discovery to artifacts from workflow "${workflowFile}" latest run #${latest.run_number} (id ${latest.id}).`
+    );
+  } catch (e) {
+    throw new Error(
+      `Failed to resolve latest workflow run for "${workflowFile}": ${e.message}`
+    );
+  }
+
   console.log(
     `Auto-discovering artifacts from ${OWNER}/${REPO} with prefix "${prefix}"...`
   );
@@ -110,6 +143,12 @@ async function autoDiscoverArtifacts(cfg) {
       if (!a || typeof a.name !== "string") continue;
       if (!a.name.startsWith(prefix)) continue;
       if (a.expired) continue;
+      if (
+        workflowRunIdFilter &&
+        (!a.workflow_run || a.workflow_run.id !== workflowRunIdFilter)
+      ) {
+        continue;
+      }
 
       const existing = byName.get(a.name);
       if (!existing || new Date(a.created_at) > new Date(existing.created_at)) {
@@ -131,7 +170,7 @@ async function autoDiscoverArtifacts(cfg) {
   const items = Array.from(byName.values());
   if (!items.length) {
     console.warn(
-      "Warning: Auto-discovery did not find any matching artifacts. Check prefix and repository settings."
+      "Warning: Auto-discovery did not find any matching artifacts. Check prefix, workflowFile, and repository settings."
     );
   } else {
     console.log(
