@@ -19,7 +19,7 @@
   },
   "devDependencies": {
     "vitest": "^1.6.1",
-    "@vitest/ui": "^1.6.1",
+    "@vitest/ui": "^4.1.4",
     "@vitest/coverage-v8": "^1.6.1"
   }
 }
