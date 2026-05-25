@@ -17,13 +17,83 @@ function app() {
       severity: "",
       fix: "",
       cvssMin: 0,
-      mobileFilters: false,
       lastAction: "apply",
       sevBaseOrder: ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'INFO', 'UNKNOWN'],
       sevOpts: ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'],
       sevCountsFiltered: {},
       fixRateFiltered: 0,
       filterSummary: "",
+
+      /* Design system colors — synced with styles.css tokens */
+      palette: {
+        success: '#30d158',
+        warning: '#ffd60a',
+        danger: '#ff2d55',
+        critical: '#ff2d55',
+        high: '#ff8a3d',
+        medium: '#ffd60a',
+        low: '#30d158',
+        info: '#8b8d98',
+        unknown: '#5c5e6a',
+      },
+
+      get activeFilterChips() {
+        const chips = [];
+        if (this.q.trim()) chips.push({ key: 'q', label: `Search: "${this.q.trim()}"` });
+        if (this.dataset) chips.push({ key: 'dataset', label: `Dataset: ${this.dataset}` });
+        if (this.severity) chips.push({ key: 'severity', label: `Severity: ${this.severity}` });
+        if (this.fix === 'has') chips.push({ key: 'fix', label: 'Has Fix' });
+        if (this.fix === 'none') chips.push({ key: 'fix', label: 'No Fix' });
+        if (Number(this.cvssMin) > 0) chips.push({ key: 'cvssMin', label: `CVSS ≥ ${this.cvssMin}` });
+        return chips;
+      },
+
+      removeFilter(key) {
+        if (key === 'q') this.q = '';
+        else if (key === 'dataset') this.dataset = '';
+        else if (key === 'severity') this.severity = '';
+        else if (key === 'fix') this.fix = '';
+        else if (key === 'cvssMin') this.cvssMin = 0;
+        this.applyFilters(true);
+      },
+
+      cvssPresets: [
+        { label: 'Any', value: 0 },
+        { label: '≥ 4.0', value: 4 },
+        { label: '≥ 7.0', value: 7 },
+        { label: '≥ 9.0', value: 9 },
+      ],
+
+      toggleSeverity(sev) {
+        this.severity = this.severity === sev ? '' : sev;
+        this.applyFilters(true);
+      },
+
+      setFixFilter(val) {
+        this.fix = val;
+        this.applyFilters(true);
+      },
+
+      setCvssPreset(val) {
+        this.cvssMin = val;
+        this.applyFilters(true);
+      },
+
+      onCvssSlider() {
+        clearTimeout(this._filterDebounceTimer);
+        this._filterDebounceTimer = setTimeout(() => this.applyFilters(true), 200);
+      },
+
+      onDatasetChange() {
+        this.applyFilters(true);
+      },
+
+      clearSearch() {
+        this.q = '';
+        this.hideSuggest();
+        this.applyFilters(true);
+      },
+
       perDatasetSev: {},
       sortKey: "severityRank",
       sortDir: "desc",
@@ -140,9 +210,9 @@ function app() {
       },
         get ringColor() {
           const p = this.fixRateFiltered;
-          if (p >= 67) return '#10b981';
-          if (p >= 33) return '#f59e0b';
-          return '#ef4444';
+          if (p >= 67) return this.palette.success;
+          if (p >= 33) return this.palette.warning;
+          return this.palette.danger;
         },
         
         get riskScore() {
@@ -173,12 +243,12 @@ function app() {
         },
 
       donutSegs: {
-        CRITICAL: { dash: '0 1000', offset: 0, color: '#dc2626', count: 0 },
-        HIGH: { dash: '0 1000', offset: 0, color: '#f87171', count: 0 },
-        MEDIUM: { dash: '0 1000', offset: 0, color: '#f59e0b', count: 0 },
-        LOW: { dash: '0 1000', offset: 0, color: '#10b981', count: 0 },
-        INFO: { dash: '0 1000', offset: 0, color: '#9ca3af', count: 0 },
-        UNKNOWN: { dash: '0 1000', offset: 0, color: '#d1d5db', count: 0 },
+        CRITICAL: { dash: '0 1000', offset: 0, color: '#ff2d55', count: 0 },
+        HIGH: { dash: '0 1000', offset: 0, color: '#ff8a3d', count: 0 },
+        MEDIUM: { dash: '0 1000', offset: 0, color: '#ffd60a', count: 0 },
+        LOW: { dash: '0 1000', offset: 0, color: '#30d158', count: 0 },
+        INFO: { dash: '0 1000', offset: 0, color: '#8b8d98', count: 0 },
+        UNKNOWN: { dash: '0 1000', offset: 0, color: '#5c5e6a', count: 0 },
       },
       donutLegend: [],
       buildSeverityDonut() {
@@ -397,9 +467,6 @@ function app() {
         }, { capture: true });
 
         this.handleResize = this.debounce(() => {
-          if (window.innerWidth < 640 && this.mobileFilters) {
-            this.mobileFilters = false;
-          }
           this.adjustLayoutForScreenSize();
           document.body.offsetHeight;
         }, 250);
@@ -733,14 +800,6 @@ function app() {
         this.applyFilters(true);
       },
 
-      toggleSidebar() {
-        this.mobileFilters = !this.mobileFilters;
-        setTimeout(() => {
-          this.adjustLayoutForScreenSize();
-          document.body.offsetHeight;
-        }, 100);
-      },
-
       saveView() { try { localStorage.setItem('sbom_view', location.hash); alert('View saved.'); } catch { } },
       loadView() { try { const h = localStorage.getItem('sbom_view'); if (h) { location.hash = h; this.restoreFromHash(); this.applyFilters(true); } } catch { } },
 
@@ -758,11 +817,10 @@ function app() {
 
       adjustLayoutForScreenSize() {
         const width = window.innerWidth;
-        const isSidebarOpen = this.mobileFilters;
-
         let availableWidth = width;
-        if (isSidebarOpen && width >= 640) {
-          availableWidth = width - (width >= 1280 ? 512 : 448);
+
+        if (width >= 1024) {
+          availableWidth = width - 304;
         }
 
           // Fixed to 10 items per page for consistent UX across all screen sizes
