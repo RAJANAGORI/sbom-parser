@@ -101,6 +101,7 @@ function app() {
       perPage: 10, // Fixed to 10 items per page for better UX
       pages: 0,
       metaText: "",
+      loadError: "",
 
       suggestions: [],
       showSuggest: false,
@@ -380,16 +381,17 @@ function app() {
 
       async init() {
         try {
-          // Try multiple paths for parse-sboms.json
-          const paths = [
+          this.loadError = "";
+          const basePath = window.location.pathname.replace(/\/[^/]*$/, "/");
+          const paths = [...new Set([
             "./parse-sboms.json",
-            "parse-sboms.json", 
+            "parse-sboms.json",
             "/parse-sboms.json",
-            window.location.pathname.replace(/\/[^/]*$/, '/') + 'parse-sboms.json'
-          ];
+            ...(basePath && basePath !== "/" ? [`${basePath}parse-sboms.json`] : []),
+          ])];
           let snap = null;
           let lastError = null;
-          let triedPaths = [];
+          const triedPaths = [];
           
           for (const path of paths) {
             triedPaths.push(path);
@@ -405,14 +407,18 @@ function app() {
             } catch (err) {
               lastError = err;
               console.warn(`✗ Error loading from ${path}:`, err.message);
-              continue;
             }
           }
           
           if (!snap) {
             const errorMsg = `Failed to load parse-sboms.json from any path. Tried: ${triedPaths.join(', ')}. Last error: ${lastError?.message || 'All paths returned non-OK status'}`;
             console.error(errorMsg);
-            throw new Error(errorMsg);
+            this.loadError = "parse-sboms.json was not found on this site. Deploy via the GitHub Actions workflow \"Sync SBOMs & Build UI\" (Actions → Run workflow) so the snapshot is published to Pages.";
+            this.metaText = "DATA UNAVAILABLE";
+            this.items = [];
+            this.filtered = [];
+            this.datasets = [];
+            return;
           }
           
           // Validate data structure
@@ -440,11 +446,9 @@ function app() {
           console.error('Failed to initialize:', error);
           this.items = [];
           this.datasets = [];
-          this.metaText = 'Error loading data. Please refresh the page.';
-          // Show user-friendly error
-          setTimeout(() => {
-            alert('Failed to load SBOM data. Please check the console for details and refresh the page.');
-          }, 100);
+          this.filtered = [];
+          this.loadError = this.loadError || "Failed to load SBOM data. Check the browser console and redeploy with a valid parse-sboms.json.";
+          this.metaText = 'ERROR LOADING DATA';
           return;
         }
 

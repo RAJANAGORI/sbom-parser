@@ -1,6 +1,10 @@
 name: Sync SBOMs & Build UI
 
 on:
+  # Deploy when UI or config changes land on main
+  push:
+    branches: [main]
+
   # Triggered by Nightingale when Trivy completes
   repository_dispatch:
     types: [nightingale-trivy-complete]
