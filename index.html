@@ -10,7 +10,7 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2308090c'/%3E%3Ccircle cx='16' cy='16' r='5' fill='%235e6ad2'/%3E%3C/svg%3E" />
   <script src="./scripts/security.js"></script>
   <link rel="stylesheet" href="./styles.css">
-  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/csp@3.14.1/dist/cdn.min.js"></script>
   <script src="./app.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -55,22 +55,22 @@
             </svg>
             Load View
           </button>
-          <div class="sm:hidden relative" x-data="{open:false}" @keydown.escape.window="open=false">
-            <button class="btn-icon" @click="open=!open" :aria-expanded="open.toString()" aria-haspopup="menu" aria-label="Actions">
+          <div class="sm:hidden relative" x-data="mobileMenu()" @keydown.escape.window="close()">
+            <button class="btn-icon" @click="open = !open" :aria-expanded="open" aria-haspopup="menu" aria-label="Actions">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
               </svg>
             </button>
-            <div x-cloak x-show="open" @click.outside="open=false" class="absolute right-0 mt-2 w-48 glass rounded-xl shadow-xl overflow-hidden animate-fade-in">
-              <button class="w-full text-left px-4 py-3 text-sm hover:bg-cyan-500/10 flex items-center gap-2" @click="exportCSV(); open=false">
+            <div x-cloak x-show="open" @click.outside="close()" class="absolute right-0 mt-2 w-48 glass rounded-xl shadow-xl overflow-hidden animate-fade-in">
+              <button class="w-full text-left px-4 py-3 text-sm hover:bg-cyan-500/10 flex items-center gap-2" @click="exportCsv()">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                 Export CSV
               </button>
-              <button class="w-full text-left px-4 py-3 text-sm hover:bg-cyan-500/10 flex items-center gap-2" @click="saveView(); open=false">
+              <button class="w-full text-left px-4 py-3 text-sm hover:bg-cyan-500/10 flex items-center gap-2" @click="saveViewAndClose()">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
                 Save View
               </button>
-              <button class="w-full text-left px-4 py-3 text-sm hover:bg-cyan-500/10 flex items-center gap-2" @click="loadView(); open=false">
+              <button class="w-full text-left px-4 py-3 text-sm hover:bg-cyan-500/10 flex items-center gap-2" @click="loadViewAndClose()">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
                 Load View
               </button>
@@ -152,12 +152,12 @@
           </div>
           <div class="cvss-presets">
             <template x-for="preset in cvssPresets" :key="'cvss-'+preset.value">
-              <button type="button" class="cvss-preset" :class="Number(cvssMin) === preset.value ? 'is-active' : ''" @click="setCvssPreset(preset.value)" x-text="preset.label"></button>
+              <button type="button" class="cvss-preset" :class="isCvssPresetActive(preset.value) ? 'is-active' : ''" @click="setCvssPreset(preset.value)" x-text="preset.label"></button>
             </template>
           </div>
           <div class="cvss-slider-wrap">
             <input type="range" min="0" max="10" step="0.1" x-model.number="cvssMin" @input="onCvssSlider()" class="cvss-slider" aria-label="CVSS minimum score" />
-            <span class="cvss-value" x-text="Number(cvssMin).toFixed(1)"></span>
+            <span class="cvss-value" x-text="cvssMinLabel"></span>
           </div>
         </div>
 
@@ -171,7 +171,7 @@
             <select x-model="dataset" @change="onDatasetChange()" class="input-field select-field">
               <option value="">All datasets</option>
               <template x-for="d in datasets" :key="d._key">
-                <option :value="d.id" x-text="`${d.id} · ${d.vulnerabilities} vulns`"></option>
+                <option :value="d.id" x-text="datasetOptionLabel(d)"></option>
               </template>
             </select>
           </div>
@@ -216,11 +216,11 @@
               <svg viewBox="0 0 100 100" class="kpi-ring-svg">
                 <circle cx="50" cy="50" r="42" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="4"/>
                 <circle cx="50" cy="50" r="42" fill="none" stroke="url(#kpiGrad)" stroke-width="4" stroke-linecap="round"
-                  :stroke-dasharray="264" :stroke-dashoffset="264 - (264 * Math.min(100, riskScore) / 100)"
+                  :stroke-dasharray="264" :stroke-dashoffset="riskRingDashOffset"
                   transform="rotate(-90 50 50)"/>
                 <defs><linearGradient id="kpiGrad" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#5e6ad2"/><stop offset="100%" stop-color="#3ddbd9"/></linearGradient></defs>
               </svg>
-              <span class="kpi-ring-label font-mono" x-text="riskScore + '%'"></span>
+              <span class="kpi-ring-label font-mono" x-text="riskScoreLabel"></span>
             </div>
           </div>
         </article>
@@ -230,7 +230,7 @@
             <span class="sev-glow" :class="'sev-glow--' + sev.toLowerCase()"></span>
             <p class="kpi-label font-mono" x-text="sev"></p>
             <p class="sev-count" :class="sev === 'CRITICAL' ? 'text-sev-critical' : sev === 'HIGH' ? 'text-sev-high' : sev === 'MEDIUM' ? 'text-sev-medium' : 'text-sev-low'" x-text="(sevCountsFiltered[sev] || 0).toLocaleString()"></p>
-            <div class="bar mt-auto"><div class="bar-fill" :class="'bar-fill--' + sev.toLowerCase()" :style="`width:${filtered.length ? (sevCountsFiltered[sev] || 0) / filtered.length * 100 : 0}%`"></div></div>
+            <div class="bar mt-auto"><div class="bar-fill" :class="'bar-fill--' + sev.toLowerCase()" :style="sevBarWidth(sev)"></div></div>
           </article>
         </template>
 
@@ -254,7 +254,7 @@
             </svg>
             <div class="flex-1 space-y-1.5 min-w-0">
               <template x-for="seg in donutLegend" :key="'leg-'+seg.label">
-                <div class="flex items-center gap-2 text-xs"><span class="w-2 h-2 rounded-full shrink-0" :style="`background:${seg.color}`"></span><span class="truncate muted" x-text="`${seg.label} · ${seg.count.toLocaleString()}`"></span></div>
+                <div class="flex items-center gap-2 text-xs"><span class="w-2 h-2 rounded-full shrink-0" :style="segBackground(seg.color)"></span><span class="truncate muted" x-text="segLegendText(seg)"></span></div>
               </template>
             </div>
           </div>
@@ -262,7 +262,7 @@
 
         <article class="bento bento-risk card hud-card">
           <p class="card-title font-mono">RISK INDEX</p>
-          <div class="risk-orb" :class="riskScore >= 70 ? 'risk-orb--critical' : riskScore >= 40 ? 'risk-orb--medium' : 'risk-orb--low'">
+          <div class="risk-orb" :class="riskOrbClass">
             <span class="risk-orb-value font-mono" x-text="riskScore"></span>
           </div>
           <div class="risk-meter mt-3">
@@ -274,7 +274,7 @@
         <article class="bento bento-spark card hud-card">
           <p class="card-title font-mono">CVSS SPECTRUM</p>
           <div class="sparkline-container">
-            <svg :viewBox="`0 0 ${sparkW} ${sparkH}`" :width="sparkW" :height="sparkH" class="w-full">
+            <svg :viewBox="sparkViewBox" :width="sparkW" :height="sparkH" class="w-full">
               <polyline :points="sparkGrid" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
               <polyline :points="cvssPath" fill="none" stroke="url(#cvssGradient)" stroke-width="2" stroke-linecap="round"/>
               <defs><linearGradient id="cvssGradient" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#5e6ad2"/><stop offset="50%" stop-color="#3ddbd9"/><stop offset="100%" stop-color="#e879f9"/></linearGradient></defs>
@@ -287,17 +287,17 @@
           <p class="card-title font-mono">TOP COMPONENTS</p>
           <div class="space-y-2.5">
             <template x-for="row in topComponents" :key="'tc-'+row.name">
-              <div class="flex items-center gap-2"><div class="flex-1 min-w-0"><p class="text-xs truncate font-mono muted" :title="row.name" x-text="row.name"></p></div><div class="chart-bar-track"><div class="chart-bar-fill" :style="`width:${row.pct}%`"></div></div><span class="font-mono text-xs muted w-6 text-right" x-text="row.count"></span></div>
+              <div class="flex items-center gap-2"><div class="flex-1 min-w-0"><p class="text-xs truncate font-mono muted" :title="row.name" x-text="row.name"></p></div><div class="chart-bar-track"><div class="chart-bar-fill" :style="widthPct(row.pct)"></div></div><span class="font-mono text-xs muted w-6 text-right" x-text="row.count"></span></div>
             </template>
           </div>
         </article>
 
         <article class="bento bento-datasets card hud-card">
           <p class="card-title font-mono">DATASETS</p>
-          <template x-if="Object.keys(perDatasetSev).length === 0"><p class="text-sm muted">No datasets in view</p></template>
+          <template x-if="hasNoDatasetSev"><p class="text-sm muted">No datasets in view</p></template>
           <div class="space-y-2.5 max-h-48 overflow-auto">
             <template x-for="(v, name) in perDatasetSev" :key="'ds-'+name">
-              <div><div class="flex justify-between text-xs mb-1"><span class="font-mono truncate muted" x-text="name"></span><span class="font-mono muted" x-text="v.total"></span></div><div class="bar"><div class="bar-fill" :style="`width:${Math.min(100, (v.total/Math.max(1, filtered.length))*100)}%`"></div></div></div>
+              <div><div class="flex justify-between text-xs mb-1"><span class="font-mono truncate muted" x-text="name"></span><span class="font-mono muted" x-text="v.total"></span></div><div class="bar"><div class="bar-fill" :style="datasetBarWidth(v.total)"></div></div></div>
             </template>
           </div>
         </article>
@@ -308,7 +308,7 @@
             <template x-for="cve in (metrics.topCVEs || [])" :key="'cve-'+cve.id">
               <button type="button" class="cve-row w-full text-left" @click="applyTopCVE(cve.id)">
                 <span class="link-accent font-mono text-xs" x-text="cve.id"></span>
-                <span class="font-mono text-xs muted" x-text="`${cve.count} · CVSS ${cve.maxCVSS ?? '-'}`"></span>
+                <span class="font-mono text-xs muted" x-text="cveSummary(cve)"></span>
               </button>
             </template>
           </div>
@@ -318,7 +318,7 @@
           <p class="card-title font-mono">LICENSES</p>
           <div class="space-y-2.5">
             <template x-for="row in topLicenses" :key="'tl-'+row.name">
-              <div class="flex items-center gap-2"><div class="flex-1 min-w-0"><p class="text-xs truncate font-mono muted" x-text="row.name"></p></div><div class="chart-bar-track"><div class="chart-bar-fill chart-bar-fill--accent" :style="`width:${row.pct}%`"></div></div><span class="font-mono text-xs muted" x-text="row.count"></span></div>
+              <div class="flex items-center gap-2"><div class="flex-1 min-w-0"><p class="text-xs truncate font-mono muted" x-text="row.name"></p></div><div class="chart-bar-track"><div class="chart-bar-fill chart-bar-fill--accent" :style="widthPct(row.pct)"></div></div><span class="font-mono text-xs muted" x-text="row.count"></span></div>
             </template>
           </div>
         </article>
@@ -327,7 +327,7 @@
           <p class="card-title font-mono">FIX RATE / DATASET</p>
           <div class="space-y-2.5">
             <template x-for="row in dsFixRates" :key="'dsfr-'+row.name">
-              <div><div class="flex justify-between text-xs mb-1"><span class="font-mono truncate muted" x-text="row.name"></span><span class="font-mono" :class="row.rate>=67?'text-sev-low':row.rate>=33?'text-sev-medium':'text-sev-critical'" x-text="row.rate+'%'"></span></div><div class="bar"><div class="bar-fill" :class="row.rate>=67?'bar-fill--success':row.rate>=33?'bar-fill--warning':'bar-fill--danger'" :style="`width:${row.rate}%`"></div></div></div>
+              <div><div class="flex justify-between text-xs mb-1"><span class="font-mono truncate muted" x-text="row.name"></span><span class="font-mono" :class="row.rate>=67?'text-sev-low':row.rate>=33?'text-sev-medium':'text-sev-critical'" x-text="row.rate+'%'"></span></div><div class="bar"><div class="bar-fill" :class="row.rate>=67?'bar-fill--success':row.rate>=33?'bar-fill--warning':'bar-fill--danger'" :style="widthPct(row.rate)"></div></div></div>
             </template>
           </div>
         </article>
@@ -351,8 +351,8 @@
               <option value="component">Component</option>
               <option value="dataset">Dataset</option>
             </select>
-            <button class="btn-icon" @click="sortDir = sortDir==='desc'?'asc':'desc'; applyFilters()" :aria-label="'Sort ' + (sortDir==='desc'?'descending':'ascending')">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" :class="sortDir==='desc' ? '' : 'transform rotate-180'">
+            <button class="btn-icon" @click="toggleSortDir()" :aria-label="sortAriaLabel">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" :class="sortIconClass">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
               </svg>
             </button>
@@ -418,7 +418,7 @@
         <div class="pagination-bar mt-6">
           <div class="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4">
             <p class="text-sm muted">
-              Showing <span class="font-semibold" style="color: var(--text-secondary);" x-text="filtered.length > 0 ? ((page * perPage) + 1) : 0"></span>–<span class="font-semibold" style="color: var(--text-secondary);" x-text="Math.min((page + 1) * perPage, filtered.length)"></span> of <span class="font-semibold" style="color: var(--text-secondary);" x-text="filtered.length.toLocaleString()"></span>
+              Showing <span class="font-semibold" style="color: var(--text-secondary);" x-text="pageRangeStart"></span>–<span class="font-semibold" style="color: var(--text-secondary);" x-text="pageRangeEnd"></span> of <span class="font-semibold" style="color: var(--text-secondary);" x-text="filtered.length.toLocaleString()"></span>
             </p>
             <p class="text-xs muted">
               Page <span class="font-semibold" x-text="page+1"></span> of <span class="font-semibold" x-text="pages"></span>

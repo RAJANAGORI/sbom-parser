@@ -79,6 +79,90 @@ function app() {
         this.applyFilters(true);
       },
 
+      isCvssPresetActive(value) {
+        return Number(this.cvssMin) === value;
+      },
+
+      get cvssMinLabel() {
+        return Number(this.cvssMin).toFixed(1);
+      },
+
+      get riskRingDashOffset() {
+        const score = Math.min(100, this.riskScore);
+        return 264 - (264 * score / 100);
+      },
+
+      sevBarWidth(sev) {
+        if (!this.filtered.length) return 'width:0%';
+        const count = this.sevCountsFiltered[sev] || 0;
+        return 'width:' + ((count / this.filtered.length) * 100) + '%';
+      },
+
+      segBackground(color) {
+        return 'background:' + color;
+      },
+
+      segLegendText(seg) {
+        return seg.label + ' · ' + seg.count.toLocaleString();
+      },
+
+      get sparkViewBox() {
+        return '0 0 ' + this.sparkW + ' ' + this.sparkH;
+      },
+
+      widthPct(pct) {
+        return 'width:' + pct + '%';
+      },
+
+      get hasNoDatasetSev() {
+        return Object.keys(this.perDatasetSev).length === 0;
+      },
+
+      datasetBarWidth(total) {
+        const pct = Math.min(100, (total / Math.max(1, this.filtered.length)) * 100);
+        return 'width:' + pct + '%';
+      },
+
+      cveSummary(cve) {
+        const cvss = cve.maxCVSS != null ? cve.maxCVSS : '-';
+        return cve.count + ' · CVSS ' + cvss;
+      },
+
+      datasetOptionLabel(d) {
+        return d.id + ' · ' + d.vulnerabilities + ' vulns';
+      },
+
+      get pageRangeStart() {
+        return this.filtered.length > 0 ? (this.page * this.perPage) + 1 : 0;
+      },
+
+      get pageRangeEnd() {
+        return Math.min((this.page + 1) * this.perPage, this.filtered.length);
+      },
+
+      toggleSortDir() {
+        this.sortDir = this.sortDir === 'desc' ? 'asc' : 'desc';
+        this.applyFilters();
+      },
+
+      get sortAriaLabel() {
+        return 'Sort ' + (this.sortDir === 'desc' ? 'descending' : 'ascending');
+      },
+
+      get sortIconClass() {
+        return this.sortDir === 'desc' ? '' : 'transform rotate-180';
+      },
+
+      get riskOrbClass() {
+        if (this.riskScore >= 70) return 'risk-orb--critical';
+        if (this.riskScore >= 40) return 'risk-orb--medium';
+        return 'risk-orb--low';
+      },
+
+      get riskScoreLabel() {
+        return this.riskScore + '%';
+      },
+
       onCvssSlider() {
         clearTimeout(this._filterDebounceTimer);
         this._filterDebounceTimer = setTimeout(() => this.applyFilters(true), 200);
@@ -862,3 +946,13 @@ function app() {
       }
     }
   }
+
+function mobileMenu() {
+  return {
+    open: false,
+    close() { this.open = false; },
+    exportCsv() { this.$root.exportCSV(); this.close(); },
+    saveViewAndClose() { this.$root.saveView(); this.close(); },
+    loadViewAndClose() { this.$root.loadView(); this.close(); },
+  };
+}
