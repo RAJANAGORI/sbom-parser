@@ -225,22 +225,29 @@
           </div>
         </article>
 
-        <template x-for="(sev, idx) in ['CRITICAL','HIGH','MEDIUM','LOW']" :key="'sev-'+sev">
-          <article class="bento bento-sev card hud-card stat-card animate-fade-in" :class="'stat-card--' + sev.toLowerCase() + ' stagger-' + (idx + 1)">
-            <span class="sev-glow" :class="'sev-glow--' + sev.toLowerCase()"></span>
-            <p class="kpi-label font-mono" x-text="sev"></p>
-            <p class="sev-count" :class="sev === 'CRITICAL' ? 'text-sev-critical' : sev === 'HIGH' ? 'text-sev-high' : sev === 'MEDIUM' ? 'text-sev-medium' : 'text-sev-low'" x-text="(sevCountsFiltered[sev] || 0).toLocaleString()"></p>
-            <div class="bar mt-auto"><div class="bar-fill" :class="'bar-fill--' + sev.toLowerCase()" :style="sevBarWidth(sev)"></div></div>
-          </article>
-        </template>
-
-        <article class="bento bento-fix card hud-card" x-show="fixRateFiltered >= 0">
-          <p class="card-title font-mono">FIX AVAILABILITY</p>
-          <div class="flex items-center gap-4">
-            <svg viewBox="0 0 44 44" width="64" height="64"><circle cx="22" cy="22" r="18" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="5"/><circle cx="22" cy="22" r="18" fill="none" :stroke-dasharray="ringCircumference" :stroke-dashoffset="ringOffsetFix" :stroke="ringColor" stroke-linecap="round" stroke-width="5" style="transform:rotate(-90deg);transform-origin:50% 50%;transition:all .5s ease"/></svg>
-            <div><p class="text-3xl font-bold kpi-accent" x-text="fixRateFiltered + '%'"></p><p class="text-xs muted">patches available</p></div>
+        <div class="bento bento-kpi-cluster">
+          <div class="bento-sev-grid" role="group" aria-label="Severity breakdown">
+            <template x-for="(sev, idx) in ['CRITICAL','HIGH','MEDIUM','LOW']" :key="'sev-'+sev">
+              <article class="bento-sev card hud-card stat-card animate-fade-in" :class="'stat-card--' + sev.toLowerCase() + ' stagger-' + (idx + 1)">
+                <span class="sev-glow" :class="'sev-glow--' + sev.toLowerCase()"></span>
+                <p class="kpi-label font-mono" x-text="sev"></p>
+                <p class="sev-count" :class="sev === 'CRITICAL' ? 'text-sev-critical' : sev === 'HIGH' ? 'text-sev-high' : sev === 'MEDIUM' ? 'text-sev-medium' : 'text-sev-low'" x-text="(sevCountsFiltered[sev] || 0).toLocaleString()"></p>
+                <div class="bar mt-auto"><div class="bar-fill" :class="'bar-fill--' + sev.toLowerCase()" :style="sevBarWidth(sev)"></div></div>
+              </article>
+            </template>
           </div>
-        </article>
+
+          <article class="bento bento-fix card hud-card" x-show="fixRateFiltered >= 0">
+            <p class="card-title font-mono">FIX AVAILABILITY</p>
+            <div class="bento-fix-body">
+              <svg viewBox="0 0 44 44" width="52" height="52" aria-hidden="true"><circle cx="22" cy="22" r="18" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="5"/><circle cx="22" cy="22" r="18" fill="none" :stroke-dasharray="ringCircumference" :stroke-dashoffset="ringOffsetFix" :stroke="ringColor" stroke-linecap="round" stroke-width="5" style="transform:rotate(-90deg);transform-origin:50% 50%;transition:all .5s ease"/></svg>
+              <div class="bento-fix-copy">
+                <p class="bento-fix-value font-mono" x-text="fixRateFiltered + '%'"></p>
+                <p class="text-xs muted">patches available</p>
+              </div>
+            </div>
+          </article>
+        </div>
 
         <article class="bento bento-donut card hud-card">
           <p class="card-title font-mono">SEVERITY MIX</p>
