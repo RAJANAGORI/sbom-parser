@@ -202,20 +202,15 @@ body {
   justify-content: center;
   position: relative;
   overflow: hidden;
+  flex-shrink: 0;
+  box-shadow: 0 0 20px rgba(94, 106, 210, 0.18);
 }
 
-.brand-mark-core {
-  width: 0.75rem;
-  height: 0.75rem;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 20px var(--accent-glow), 0 0 40px rgba(94, 106, 210, 0.2);
-  animation: pulse-core 3s ease-in-out infinite;
-}
-
-@keyframes pulse-core {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.85; transform: scale(0.92); }
+.brand-mark-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .brand-title {
